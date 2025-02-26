@@ -48,6 +48,7 @@ import org.apache.flink.state.forst.restore.ForStIncrementalRestoreOperation;
 import org.apache.flink.state.forst.restore.ForStNoneRestoreOperation;
 import org.apache.flink.state.forst.restore.ForStRestoreOperation;
 import org.apache.flink.state.forst.restore.ForStRestoreResult;
+import org.apache.flink.state.forst.service.compaction.CompactionServiceImpl;
 import org.apache.flink.state.forst.snapshot.ForStIncrementalSnapshotStrategy;
 import org.apache.flink.state.forst.snapshot.ForStNativeFullSnapshotStrategy;
 import org.apache.flink.state.forst.snapshot.ForStSnapshotStrategyBase;
@@ -312,6 +313,8 @@ public class ForStKeyedStateBackendBuilder<K>
                 "Finished building ForSt keyed state-backend at local base path: {}, remote base path: {}.",
                 optionsContainer.getLocalBasePath(),
                 optionsContainer.getRemoteBasePath());
+        maybeStartCompactionService();
+
         return new ForStKeyedStateBackend<>(
                 backendUID,
                 executionConfig,
@@ -333,6 +336,14 @@ public class ForStKeyedStateBackendBuilder<K>
                 keyContext,
                 ttlTimeProvider,
                 ttlCompactFiltersManager);
+    }
+
+    private void maybeStartCompactionService() {
+        if (!optionsContainer.getEmbedCompactionService()) {
+            return;
+        }
+        logger.info("Starting ForSt compaction service.");
+        CompactionServiceImpl.startService();
     }
 
     private ForStRestoreOperation getForStRestoreOperation(

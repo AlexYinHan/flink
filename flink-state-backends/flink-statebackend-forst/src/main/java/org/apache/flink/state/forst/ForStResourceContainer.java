@@ -361,6 +361,10 @@ public final class ForStResourceContainer implements AutoCloseable {
         return configuration.get(ForStOptions.EXECUTOR_WRITE_IO_PARALLELISM);
     }
 
+    public boolean getEmbedCompactionService() {
+        return configuration.get(ForStOptions.EMBED_COMPACTION_SERVICE);
+    }
+
     /**
      * Prepare local and remote directories.
      *
