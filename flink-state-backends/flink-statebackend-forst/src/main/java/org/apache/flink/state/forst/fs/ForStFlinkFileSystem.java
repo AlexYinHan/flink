@@ -19,6 +19,7 @@
 package org.apache.flink.state.forst.fs;
 
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.fs.BlockLocation;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FSDataOutputStream;
@@ -47,6 +48,7 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -60,7 +62,7 @@ import java.util.List;
  * <p>All methods in this class maybe used by ForSt, please start a discussion firstly if it has to
  * be modified.
  */
-public class ForStFlinkFileSystem extends FileSystem {
+public class ForStFlinkFileSystem extends FileSystem implements Closeable {
 
     private static final Logger LOG = LoggerFactory.getLogger(ForStFlinkFileSystem.class);
 
@@ -124,6 +126,7 @@ public class ForStFlinkFileSystem extends FileSystem {
     }
 
     public static FileBasedCache getFileBasedCache(
+            ReadableConfig config,
             Path cacheBase,
             Path remoteForStPath,
             long cacheCapacity,
@@ -156,11 +159,7 @@ public class ForStFlinkFileSystem extends FileSystem {
                             new File(cacheBase.toString()), cacheReservedSize, SST_FILE_SIZE);
         }
         return new FileBasedCache(
-                Integer.MAX_VALUE,
-                cacheLimitPolicy,
-                cacheBase.getFileSystem(),
-                cacheBase,
-                metricGroup);
+                config, cacheLimitPolicy, cacheBase.getFileSystem(), cacheBase, metricGroup);
     }
 
     public FileSystem getDelegateFS() {
@@ -361,10 +360,12 @@ public class ForStFlinkFileSystem extends FileSystem {
 
     @Override
     public synchronized boolean delete(Path path, boolean recursive) throws IOException {
+        MappingEntry mappingEntry = fileMappingManager.mappingEntry(path.toString());
         boolean success = fileMappingManager.deleteFileOrDirectory(path, recursive);
-        if (fileBasedCache != null) {
-            // only new generated file will put into cache, no need to consider file mapping
-            fileBasedCache.delete(path);
+        if (fileBasedCache != null && mappingEntry != null) {
+            // if mappingEntry is not null, it means it is a file, not directory
+            MappingEntrySource source = mappingEntry.getSource();
+            fileBasedCache.delete(source.getFilePath());
         }
         return success;
     }
@@ -389,7 +390,12 @@ public class ForStFlinkFileSystem extends FileSystem {
 
     public synchronized void registerReusedRestoredFile(
             String key, StreamStateHandle stateHandle, Path dbFilePath) {
-        fileMappingManager.registerReusedRestoredFile(key, stateHandle, dbFilePath);
+        MappingEntry mappingEntry =
+                fileMappingManager.registerReusedRestoredFile(key, stateHandle, dbFilePath);
+        if (fileBasedCache != null) {
+            fileBasedCache.registerInCache(
+                    mappingEntry.getSourcePath(), stateHandle.getStateSize());
+        }
     }
 
     public synchronized @Nullable MappingEntry getMappingEntry(Path path) {
@@ -442,6 +448,13 @@ public class ForStFlinkFileSystem extends FileSystem {
 
     public synchronized byte[] getSerializedMappingTableForCompactionResults() throws IOException {
         return fileMappingManager.getSerializedMappingTableForCompactionResult();
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (fileBasedCache != null) {
+            fileBasedCache.close();
+        }
     }
 
     public static class FileStatusWrapper implements FileStatus {
