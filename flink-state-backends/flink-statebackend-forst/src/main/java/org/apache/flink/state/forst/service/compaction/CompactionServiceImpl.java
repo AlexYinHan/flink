@@ -36,27 +36,31 @@ public class CompactionServiceImpl implements CompactionService {
 
     @Override
     public void ping() {
-        LOG.info("ping on compaction-service side");
-        System.out.println("ping on compaction-service side");
+        //        LOG.info("ping on compaction-service side");
+        //        System.out.println("ping on compaction-service side");
     }
 
     @Override
     public Tuple2<byte[], byte[]> performCompaction(byte[] params, byte[] serializedFileMappings) {
         UUID uuid = UUID.randomUUID();
-        LOG.info("here, {}", uuid);
+        //        LOG.info("here, {}", uuid);
 
         LOG.info("perform compaction on compaction-service side, {}", uuid);
-        System.out.println("perform compaction on compaction-service side1: " + params.length);
+        //        System.out.println("perform compaction on compaction-service side1: " +
+        // params.length);
         Object fsObject =
                 CompactionServiceJNI.handleCompactionRequest(params, serializedFileMappings);
-        System.out.println("perform compaction on compaction-service side2: " + params.length);
+        //        System.out.println("perform compaction on compaction-service side2: " +
+        // params.length);
         ForStFlinkFileSystem forStFlinkFileSystem =
                 CompactionServiceJNI.getForStFlinkFileSystemFromObject(fsObject);
-        System.out.println("perform compaction on compaction-service side3: " + params.length);
-        System.out.println(
-                "perform compaction on compaction-service side complete: " + params.length);
+        //        System.out.println("perform compaction on compaction-service side3: " +
+        // params.length);
+        //        System.out.println(
+        //                "perform compaction on compaction-service side complete: " +
+        // params.length);
 
-        LOG.info("return, {}", uuid);
+        //        LOG.info("return, {}", uuid);
         try {
             return forStFlinkFileSystem.getFileMappingManager().getCompactionOutput();
         } catch (IOException e) {
@@ -80,7 +84,7 @@ public class CompactionServiceImpl implements CompactionService {
                                         .ref(new CompactionServiceImpl())
                                         .timeout(3600000)
                                         .build());
-        System.out.println("start service1");
+        //        System.out.println("start service1");
         serviceInstance.start();
     }
 

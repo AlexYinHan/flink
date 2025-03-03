@@ -165,34 +165,34 @@ public class ForStFlinkFileSystem extends FileSystem {
      *     file already exists at that path and the write mode indicates to not overwrite the file.
      */
     public ByteBufferWritableFSDataOutputStream create(Path path) throws IOException {
-        System.out.println("create path: " + path);
+        // System.out.println("create path: " + path);
         return create(path, WriteMode.OVERWRITE);
     }
 
     @Override
     public synchronized ByteBufferWritableFSDataOutputStream create(
             Path dbFilePath, WriteMode overwriteMode) throws IOException {
-        System.out.println("create path: " + dbFilePath + ", overwriteMode1: " + overwriteMode);
+        // System.out.println("create path: " + dbFilePath + ", overwriteMode1: " + overwriteMode);
         // Create a file in the mapping table
         MappingEntry createdMappingEntry = fileMappingManager.createNewFile(dbFilePath);
-        System.out.println("create path: " + dbFilePath + ", overwriteMode1: " + overwriteMode);
+        // System.out.println("create path: " + dbFilePath + ", overwriteMode1: " + overwriteMode);
 
         // The source must be backed by a file
         FileBackedMappingEntrySource source =
                 (FileBackedMappingEntrySource) createdMappingEntry.getSource();
         Path sourceRealPath = source.getFilePath();
-        System.out.println("create path: " + dbFilePath + ", overwriteMode2: " + overwriteMode);
+        // System.out.println("create path: " + dbFilePath + ", overwriteMode2: " + overwriteMode);
 
         // Create the actual file output stream
         FileSystem fileSystem = sourceRealPath.getFileSystem();
         FSDataOutputStream outputStream = fileSystem.create(sourceRealPath, overwriteMode);
-        System.out.println("create path: " + dbFilePath + ", overwriteMode3: " + overwriteMode);
+        // System.out.println("create path: " + dbFilePath + ", overwriteMode3: " + overwriteMode);
 
         // Try to create file cache for SST files
         CachedDataOutputStream cachedDataOutputStream =
                 createCachedDataOutputStream(dbFilePath, sourceRealPath, outputStream);
 
-        System.out.println("create path: " + dbFilePath + ", overwriteMode4: " + overwriteMode);
+        // System.out.println("create path: " + dbFilePath + ", overwriteMode4: " + overwriteMode);
         LOG.trace(
                 "Create file: dbFilePath: {}, sourceRealPath: {}, cachedDataOutputStream: {}",
                 dbFilePath,
@@ -205,7 +205,7 @@ public class ForStFlinkFileSystem extends FileSystem {
     @Override
     public synchronized ByteBufferReadableFSDataInputStream open(Path dbFilePath, int bufferSize)
             throws IOException {
-        System.out.println("open path: " + dbFilePath + ", bufferSize: " + bufferSize);
+        // System.out.println("open path: " + dbFilePath + ", bufferSize: " + bufferSize);
         MappingEntry mappingEntry = fileMappingManager.mappingEntry(dbFilePath.toString());
         Preconditions.checkNotNull(mappingEntry);
         MappingEntrySource source = mappingEntry.getSource();
@@ -224,7 +224,7 @@ public class ForStFlinkFileSystem extends FileSystem {
     @Override
     public synchronized ByteBufferReadableFSDataInputStream open(Path dbFilePath)
             throws IOException {
-        System.out.println("open path: " + dbFilePath);
+        // System.out.println("open path: " + dbFilePath);
         MappingEntry mappingEntry = fileMappingManager.mappingEntry(dbFilePath.toString());
         Preconditions.checkNotNull(mappingEntry);
         MappingEntrySource source = mappingEntry.getSource();
@@ -242,19 +242,19 @@ public class ForStFlinkFileSystem extends FileSystem {
 
     @Override
     public synchronized boolean rename(Path src, Path dst) throws IOException {
-        System.out.println("rename src: " + src + ", dst: " + dst);
+        // System.out.println("rename src: " + src + ", dst: " + dst);
         return fileMappingManager.renameFile(src.toString(), dst.toString());
     }
 
     @Override
     public synchronized Path getWorkingDirectory() {
-        System.out.println("getWorkingDirectory: " + delegateFS.getWorkingDirectory());
+        // System.out.println("getWorkingDirectory: " + delegateFS.getWorkingDirectory());
         return delegateFS.getWorkingDirectory();
     }
 
     @Override
     public synchronized Path getHomeDirectory() {
-        System.out.println("getHomeDirectory: " + delegateFS.getHomeDirectory());
+        // System.out.println("getHomeDirectory: " + delegateFS.getHomeDirectory());
         return delegateFS.getHomeDirectory();
     }
 
@@ -265,18 +265,20 @@ public class ForStFlinkFileSystem extends FileSystem {
 
     @Override
     public synchronized boolean exists(final Path f) throws IOException {
-        System.out.println(
-                "exists path: " + Integer.toHexString(fileMappingManager.hashCode()) + ", " + f);
+        // System.out.println(
+        //                "exists path: " + Integer.toHexString(fileMappingManager.hashCode()) + ",
+        // " + f);
         MappingEntry mappingEntry = fileMappingManager.mappingEntry(f.toString());
         if (mappingEntry == null) {
             return delegateFS.exists(f) && delegateFS.getFileStatus(f).isDir();
         }
-        System.out.println(
-                "mappingEntry is not null, source path: " + mappingEntry.getSourcePath());
+        // System.out.println(
+        //                "mappingEntry is not null, source path: " + mappingEntry.getSourcePath());
 
         if (FileOwnershipDecider.shouldAlwaysBeLocal(f)) {
-            System.out.println(
-                    "localFs exists path: " + localFS.exists(mappingEntry.getSourcePath()));
+            // System.out.println(
+            //                    "localFs exists path: " +
+            // localFS.exists(mappingEntry.getSourcePath()));
             return localFS.exists(mappingEntry.getSourcePath())
                     || delegateFS.exists(mappingEntry.getSourcePath());
         } else {
@@ -286,19 +288,21 @@ public class ForStFlinkFileSystem extends FileSystem {
 
     @Override
     public synchronized FileStatus getFileStatus(Path path) throws IOException {
-        System.out.println("getFileStatus path: " + path);
+        // System.out.println("getFileStatus path: " + path);
         Path sourcePath = getSourcePath(path);
         FileSystem fileSystem = sourcePath.getFileSystem();
-        System.out.println(
-                "getFileStatus path res: " + fileSystem.getFileStatus(sourcePath).getLen());
+        // System.out.println(
+        //                "getFileStatus path res: " +
+        // fileSystem.getFileStatus(sourcePath).getLen());
         return new FileStatusWrapper(fileSystem.getFileStatus(sourcePath), path);
     }
 
     @Override
     public synchronized BlockLocation[] getFileBlockLocations(FileStatus file, long start, long len)
             throws IOException {
-        System.out.println(
-                "getFileBlockLocations file: " + file + ", start: " + start + ", len: " + len);
+        // System.out.println(
+        //                "getFileBlockLocations file: " + file + ", start: " + start + ", len: " +
+        // len);
         Path sourcePath = getSourcePath(file.getPath());
 
         FileSystem fileSystem = sourcePath.getFileSystem();
@@ -307,7 +311,7 @@ public class ForStFlinkFileSystem extends FileSystem {
     }
 
     private @Nonnull Path getSourcePath(Path path) throws FileNotFoundException {
-        System.out.println("getSourcePath path: " + path);
+        // System.out.println("getSourcePath path: " + path);
         MappingEntry mappingEntry = fileMappingManager.mappingEntry(path.toString());
         Preconditions.checkNotNull(mappingEntry);
         MappingEntrySource source = mappingEntry.getSource();

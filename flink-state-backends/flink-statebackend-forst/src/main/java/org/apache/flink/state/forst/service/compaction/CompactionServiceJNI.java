@@ -48,6 +48,6 @@ public class CompactionServiceJNI {
         forStFlinkFileSystem
                 .getFileMappingManager()
                 .registerCompactionOutput(compactionOutputBytes);
-        System.out.println("registerOutput: " + compactionOutputBytes.length);
+        //        System.out.println("registerOutput: " + compactionOutputBytes.length);
     }
 }

@@ -381,13 +381,13 @@ public class FileMappingManager {
             if (mappingTable.containsKey(entry.getKey())) {
                 continue;
             }
-            System.out.println(
-                    "buildFromBytes: "
-                            + Integer.toHexString(hashCode())
-                            + ", "
-                            + entry.getKey()
-                            + " -> "
-                            + realFilePath);
+            //            System.out.println(
+            //                    "buildFromBytes: "
+            //                            + Integer.toHexString(hashCode())
+            //                            + ", "
+            //                            + entry.getKey()
+            //                            + " -> "
+            //                            + realFilePath);
             addMappingEntry(
                     entry.getKey(),
                     new MappingEntry(
@@ -418,7 +418,7 @@ public class FileMappingManager {
                 });
         for (String localFile : localFiles) {
             MappingEntry entry = mappingTable.remove(localFile);
-            System.out.println("remove local file: " + localFile);
+            //            System.out.println("remove local file: " + localFile);
             entry.release();
         }
         return new Tuple2<>(compactionOutputBytes, getSerializedMappingTable(true));
