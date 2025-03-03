@@ -18,6 +18,8 @@
 
 package org.apache.flink.state.forst.service.compaction;
 
+import org.apache.flink.api.java.tuple.Tuple2;
+
 public interface CompactionService extends ForStRPCEndpoint {
-    void performCompaction();
+    Tuple2<byte[], byte[]> performCompaction(byte[] params, byte[] serializedFileMappings);
 }

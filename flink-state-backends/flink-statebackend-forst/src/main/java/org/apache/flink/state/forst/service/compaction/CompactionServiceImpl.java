@@ -18,12 +18,18 @@
 
 package org.apache.flink.state.forst.service.compaction;
 
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.state.forst.fs.ForStFlinkFileSystem;
+
 import org.apache.dubbo.common.constants.CommonConstants;
 import org.apache.dubbo.config.ProtocolConfig;
 import org.apache.dubbo.config.bootstrap.DubboBootstrap;
 import org.apache.dubbo.config.bootstrap.builders.ServiceBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.UUID;
 
 public class CompactionServiceImpl implements CompactionService {
     private static final Logger LOG = LoggerFactory.getLogger(CompactionServiceImpl.class);
@@ -35,9 +41,27 @@ public class CompactionServiceImpl implements CompactionService {
     }
 
     @Override
-    public void performCompaction() {
-        LOG.info("perform compaction on compaction-service side");
-        System.out.println("perform compaction on compaction-service side");
+    public Tuple2<byte[], byte[]> performCompaction(byte[] params, byte[] serializedFileMappings) {
+        UUID uuid = UUID.randomUUID();
+        LOG.info("here, {}", uuid);
+
+        LOG.info("perform compaction on compaction-service side, {}", uuid);
+        System.out.println("perform compaction on compaction-service side1: " + params.length);
+        Object fsObject =
+                CompactionServiceJNI.handleCompactionRequest(params, serializedFileMappings);
+        System.out.println("perform compaction on compaction-service side2: " + params.length);
+        ForStFlinkFileSystem forStFlinkFileSystem =
+                CompactionServiceJNI.getForStFlinkFileSystemFromObject(fsObject);
+        System.out.println("perform compaction on compaction-service side3: " + params.length);
+        System.out.println(
+                "perform compaction on compaction-service side complete: " + params.length);
+
+        LOG.info("return, {}", uuid);
+        try {
+            return forStFlinkFileSystem.getFileMappingManager().getCompactionOutput();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static DubboBootstrap serviceInstance = null;
@@ -54,7 +78,9 @@ public class CompactionServiceImpl implements CompactionService {
                                 ServiceBuilder.newBuilder()
                                         .interfaceClass(CompactionService.class)
                                         .ref(new CompactionServiceImpl())
+                                        .timeout(3600000)
                                         .build());
+        System.out.println("start service1");
         serviceInstance.start();
     }
 

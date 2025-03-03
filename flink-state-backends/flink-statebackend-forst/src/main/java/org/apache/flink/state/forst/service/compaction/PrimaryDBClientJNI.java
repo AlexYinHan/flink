@@ -18,10 +18,44 @@
 
 package org.apache.flink.state.forst.service.compaction;
 
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.state.forst.fs.ForStFlinkFileSystem;
+import org.apache.flink.state.forst.fs.StringifiedForStFileSystem;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class PrimaryDBClientJNI {
-    public static void invokeCompactionService() {
-        CompactionService compactionService = PrimaryDBClient.getCompactionService();
-        compactionService.performCompaction();
-        System.out.println("invokeCompactionService");
+
+    private static final Logger LOG = LoggerFactory.getLogger(PrimaryDBClientJNI.class);
+
+    static native void handleCompactionResponse(byte[] output, long ongoingCompactionHandle);
+
+    public static void invokeCompactionService(
+            byte[] params, Object fileSystem, long ongoingCompactionHandle) {
+        try {
+            LOG.info("invokeCompactionService");
+            CompactionService compactionService = PrimaryDBClient.getCompactionService();
+            ForStFlinkFileSystem forStFlinkFileSystem;
+            if (fileSystem instanceof ForStFlinkFileSystem) {
+                forStFlinkFileSystem = (ForStFlinkFileSystem) fileSystem;
+            } else if (fileSystem instanceof StringifiedForStFileSystem) {
+                forStFlinkFileSystem = ((StringifiedForStFileSystem) fileSystem).getFileSystem();
+            } else {
+                throw new RuntimeException("unsupported fileSystem: " + fileSystem);
+            }
+            Tuple2<byte[], byte[]> outputAndFileMapping =
+                    compactionService.performCompaction(
+                            params,
+                            forStFlinkFileSystem
+                                    .getFileMappingManager()
+                                    .getSerializedMappingTable());
+            LOG.info("invokeCompactionService complete: " + outputAndFileMapping.f0.length);
+
+            forStFlinkFileSystem.getFileMappingManager().buildFromBytes(outputAndFileMapping.f1);
+            handleCompactionResponse(outputAndFileMapping.f0, ongoingCompactionHandle);
+        } catch (Exception e) {
+            LOG.error("invokeCompactionService error", e);
+        }
     }
 }

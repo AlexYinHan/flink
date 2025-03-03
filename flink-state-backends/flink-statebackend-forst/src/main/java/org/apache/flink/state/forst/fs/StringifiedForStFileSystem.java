@@ -77,4 +77,8 @@ public class StringifiedForStFileSystem {
     public int link(String src, String dst) throws IOException {
         return fileSystem.link(new Path(src), new Path(dst));
     }
+
+    public ForStFlinkFileSystem getFileSystem() {
+        return fileSystem;
+    }
 }

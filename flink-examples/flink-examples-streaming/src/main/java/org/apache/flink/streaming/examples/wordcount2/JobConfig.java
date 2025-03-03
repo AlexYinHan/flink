@@ -36,134 +36,138 @@ import java.time.Duration;
 
 import static org.apache.flink.configuration.ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION;
 
-/**
- * Configurations for the job.
- */
+/** Configurations for the job. */
 public class JobConfig {
 
-	public static final ConfigOption<String> JOB_NAME = ConfigOptions
-			.key("jobName")
-            .stringType()
-			.defaultValue("WordCount")
-			.withDescription("Job name");
+    public static final ConfigOption<String> JOB_NAME =
+            ConfigOptions.key("jobName")
+                    .stringType()
+                    .defaultValue("WordCount")
+                    .withDescription("Job name");
 
-	// word source options ======================================
+    // word source options ======================================
 
-	public static final ConfigOption<Integer> WORD_NUMBER = ConfigOptions
-			.key("wordNumber")
-            .intType()
-			.defaultValue(100000)
-			.withDescription("Number of different words which will influence state size.");
+    public static final ConfigOption<Integer> WORD_NUMBER =
+            ConfigOptions.key("wordNumber")
+                    .intType()
+                    .defaultValue(100000)
+                    .withDescription("Number of different words which will influence state size.");
 
-	public static final ConfigOption<Integer> WORD_LENGTH = ConfigOptions
-			.key("wordLength")
-            .intType()
-			.defaultValue(16)
-			.withDescription("Length of word which will influence state size.");
+    public static final ConfigOption<Integer> WORD_LENGTH =
+            ConfigOptions.key("wordLength")
+                    .intType()
+                    .defaultValue(16)
+                    .withDescription("Length of word which will influence state size.");
 
-	public static final ConfigOption<Integer> WORD_RATE = ConfigOptions
-			.key("wordRate")
-            .intType()
-			.defaultValue(1000000)
-			.withDescription("Rate to emit words");
-	// Flat map options ===============================================
+    public static final ConfigOption<Integer> WORD_RATE =
+            ConfigOptions.key("wordRate")
+                    .intType()
+                    .defaultValue(1000000)
+                    .withDescription("Rate to emit words");
+    // Flat map options ===============================================
 
-	public static final ConfigOption<Duration> TTL = ConfigOptions
-			.key("stateTtl")
-			.durationType()
-			.defaultValue(Duration.ZERO)
-			.withDescription("The TTL of state.");
+    public static final ConfigOption<Duration> TTL =
+            ConfigOptions.key("stateTtl")
+                    .durationType()
+                    .defaultValue(Duration.ZERO)
+                    .withDescription("The TTL of state.");
 
-	public static final ConfigOption<Integer> FLAT_MAP_PARALLELISM = ConfigOptions
-			.key("flatMapParallelism")
-            .intType()
-			.defaultValue(1)
-			.withDescription("The parallelism of Flat Map operator.");
+    public static final ConfigOption<Integer> FLAT_MAP_PARALLELISM =
+            ConfigOptions.key("flatMapParallelism")
+                    .intType()
+                    .defaultValue(1)
+                    .withDescription("The parallelism of Flat Map operator.");
 
-	//  checkpoint options ========================================
+    //  checkpoint options ========================================
 
-	public static final ConfigOption<Long> CHECKPOINT_INTERVAL = ConfigOptions
-			.key("checkpointInterval")
-			.longType()
-			.noDefaultValue()
-			.withDescription("Checkpoint interval in milliseconds, and default is Long.MAX_VALUE which" +
-				"means checkpoint is disable.");
+    public static final ConfigOption<Long> CHECKPOINT_INTERVAL =
+            ConfigOptions.key("checkpointInterval")
+                    .longType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "Checkpoint interval in milliseconds, and default is Long.MAX_VALUE which"
+                                    + "means checkpoint is disable.");
 
-	public static final ConfigOption<String> CHECKPOINT_PATH = ConfigOptions
-			.key("checkpointPath")
-            .stringType()
-			.noDefaultValue()
-			.withDescription("Checkpoint path");
+    public static final ConfigOption<String> CHECKPOINT_PATH =
+            ConfigOptions.key("checkpointPath")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription("Checkpoint path");
 
-	// state backend options ======================================
+    // state backend options ======================================
 
-	public static final ConfigOption<String> STATE_BACKEND = ConfigOptions
-			.key("stateBackend")
-			.stringType()
-			.noDefaultValue()
-			.withDescription("Type of state backend, support memory, fs, gemini, niagara, rocksdb");
+    public static final ConfigOption<String> STATE_BACKEND =
+            ConfigOptions.key("stateBackend")
+                    .stringType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "Type of state backend, support memory, fs, gemini, niagara, rocksdb");
 
-	public static final ConfigOption<String> STATE_MODE = ConfigOptions
-			.key("stateMode")
-            .stringType()
-			.defaultValue(StateMode.MIXED.name())
-			.withDescription("Mode of state access, support write, read, and mixed");
+    public static final ConfigOption<String> STATE_MODE =
+            ConfigOptions.key("stateMode")
+                    .stringType()
+                    .defaultValue(StateMode.MIXED.name())
+                    .withDescription("Mode of state access, support write, read, and mixed");
 
-	public static final ConfigOption<String> ROCKSDB_COMPRESS = ConfigOptions
-			.key("rocksdbCompress")
-            .stringType()
-			.defaultValue(CompressionType.SNAPPY_COMPRESSION.name())
-			.withDescription("Compression type for rocksdb.");
+    public static final ConfigOption<String> ROCKSDB_COMPRESS =
+            ConfigOptions.key("rocksdbCompress")
+                    .stringType()
+                    .defaultValue(CompressionType.SNAPPY_COMPRESSION.name())
+                    .withDescription("Compression type for rocksdb.");
 
-	public static final ConfigOption<Boolean> ROCKSDB_STATS = ConfigOptions
-			.key("rocksdbStats")
-            .booleanType()
-			.defaultValue(false);
+    public static final ConfigOption<Boolean> ROCKSDB_STATS =
+            ConfigOptions.key("rocksdbStats").booleanType().defaultValue(false);
 
-	public static final ConfigOption<Boolean> SHARING_GROUP = ConfigOptions
-			.key("sharingGroup")
-            .booleanType()
-			.defaultValue(false)
-			.withDescription("Whether to enable sharing group");
+    public static final ConfigOption<Boolean> SHARING_GROUP =
+            ConfigOptions.key("sharingGroup")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription("Whether to enable sharing group");
 
-    public static final ConfigOption<String> RESTORE_PATH = ConfigOptions
-            .key("restorePath")
-            .stringType()
-            .noDefaultValue();
+    public static final ConfigOption<String> RESTORE_PATH =
+            ConfigOptions.key("restorePath").stringType().noDefaultValue();
 
-    public static final ConfigOption<Boolean> ENABLE_CLAIM = ConfigOptions
-            .key("enableClaim")
-            .booleanType()
-            .defaultValue(false);
+    public static final ConfigOption<Boolean> ENABLE_CLAIM =
+            ConfigOptions.key("enableClaim").booleanType().defaultValue(false);
 
-	public static Configuration getConfiguration(ParameterTool params) {
-		Configuration configuration = new Configuration();
-		configuration.addAll(params.getConfiguration());
+    public static final ConfigOption<Boolean> EMBED_COMPACTION_SERVICE =
+            ConfigOptions.key("embedCompactionService").booleanType().defaultValue(false);
 
-		return configuration;
-	}
+    public static final ConfigOption<String> COMPACTION_SERVICE_ADDRESS =
+            ConfigOptions.key("compactionServiceAddress").stringType().defaultValue("");
 
+    public static Configuration getConfiguration(ParameterTool params) {
+        Configuration configuration = new Configuration();
+        configuration.addAll(params.getConfiguration());
 
-	public enum StateMode {
-		WRITE, READ, MIXED
-	}
+        return configuration;
+    }
 
-	public static void configureCheckpoint(StreamExecutionEnvironment env, Configuration configuration) {
-		if (configuration.get(CHECKPOINT_INTERVAL) == null) {
-			return;
-		}
+    public enum StateMode {
+        WRITE,
+        READ,
+        MIXED
+    }
 
-		env.enableCheckpointing(configuration.get(CHECKPOINT_INTERVAL), CheckpointingMode.EXACTLY_ONCE);
-		env.getCheckpointConfig().setExternalizedCheckpointRetention(RETAIN_ON_CANCELLATION);
-	}
+    public static void configureCheckpoint(
+            StreamExecutionEnvironment env, Configuration configuration) {
+        if (configuration.get(CHECKPOINT_INTERVAL) == null) {
+            return;
+        }
 
-	public static void setStateBackend(StreamExecutionEnvironment env, Configuration configuration) {
-//        String stateBackendType = configuration.get(STATE_BACKEND).toLowerCase();
-//        Configuration jobConfiguration = new Configuration();
-//        if (stateBackendType.equals("forst")) {
-//            stateBackendType = "org.apache.flink.state.forst.ForStStateBackendFactory";
-//        }
-//        jobConfiguration.set(StateBackendOptions.STATE_BACKEND, stateBackendType);
-//		env.configure(jobConfiguration);
-	}
+        env.enableCheckpointing(
+                configuration.get(CHECKPOINT_INTERVAL), CheckpointingMode.EXACTLY_ONCE);
+        env.getCheckpointConfig().setExternalizedCheckpointRetention(RETAIN_ON_CANCELLATION);
+    }
+
+    public static void setStateBackend(
+            StreamExecutionEnvironment env, Configuration configuration) {
+        //        String stateBackendType = configuration.get(STATE_BACKEND).toLowerCase();
+        //        Configuration jobConfiguration = new Configuration();
+        //        if (stateBackendType.equals("forst")) {
+        //            stateBackendType = "org.apache.flink.state.forst.ForStStateBackendFactory";
+        //        }
+        //        jobConfiguration.set(StateBackendOptions.STATE_BACKEND, stateBackendType);
+        //		env.configure(jobConfiguration);
+    }
 }

@@ -18,6 +18,8 @@
 
 package org.apache.flink.state.forst.service.compaction;
 
-public interface ForStRPCEndpoint {
+import java.io.Serializable;
+
+public interface ForStRPCEndpoint extends Serializable {
     default void ping() {}
 }

@@ -25,21 +25,30 @@ import org.slf4j.LoggerFactory;
 
 public class PrimaryDBClient implements ForStRPCEndpoint {
     private static final Logger LOG = LoggerFactory.getLogger(PrimaryDBClient.class);
-    private static String kCompactionServiceAddress = "tri://192.168.0.88:50051";
+    private static String kCompactionServiceAddress = "tri://127.0.0.1:50051";
+    private static CompactionService compactionService;
 
-    public static CompactionService getCompactionService() {
-        return getCompactionService(kCompactionServiceAddress);
+    public static void setCompactionServiceAddress(String compactionServiceAddress) {
+        kCompactionServiceAddress = compactionServiceAddress;
+        compactionService = getCompactionService();
     }
 
-    public static CompactionService getCompactionService(String compactionServiceAddress) {
+    public static CompactionService getCompactionService() {
+        return compactionService == null ? initCompactionService() : compactionService;
+    }
+
+    public static CompactionService initCompactionService() {
+        LOG.info("Getting compaction service from {}", kCompactionServiceAddress);
         CompactionService compactionService =
-                ReferenceBuilder.<CompactionService>newBuilder()
-                        .interfaceClass(CompactionService.class)
-                        .url(compactionServiceAddress)
-                        .build()
-                        .get();
+                (CompactionService)
+                        ReferenceBuilder.newBuilder()
+                                .interfaceClass(CompactionService.class)
+                                .url(kCompactionServiceAddress)
+                                .timeout(3600000)
+                                .build()
+                                .get();
         compactionService.ping();
-        LOG.info("Get compaction service from {}", compactionServiceAddress);
+        LOG.info("Got compaction service from {}", kCompactionServiceAddress);
         return compactionService;
     }
 }

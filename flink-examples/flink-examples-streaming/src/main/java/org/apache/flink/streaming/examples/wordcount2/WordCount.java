@@ -47,15 +47,13 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.time.Duration;
 
-/**
- * Benchmark mainly used for {@link ValueState} and only support 1 parallelism.
- */
+/** Benchmark mainly used for {@link ValueState} and only support 1 parallelism. */
 public class WordCount {
 
-	private static final Logger LOG = LoggerFactory.getLogger(WordCount.class);
+    private static final Logger LOG = LoggerFactory.getLogger(WordCount.class);
 
-	public static void main(String[] args) throws Exception {
-		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    public static void main(String[] args) throws Exception {
+        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         ParameterTool params = ParameterTool.fromArgs(args);
         Configuration configuration = getConfiguration(params);
         if (configuration.getOptional(RESTORE_PATH).isPresent()) {
@@ -64,108 +62,136 @@ public class WordCount {
         boolean claim = configuration.get(ENABLE_CLAIM);
         RecoveryClaimMode claimMode = claim ? RecoveryClaimMode.CLAIM : RecoveryClaimMode.NO_CLAIM;
         configuration.set(RESTORE_MODE, claimMode);
-        //configRemoteStateBackend(configuration);
+
+        boolean embedCompactionService = configuration.get(JobConfig.EMBED_COMPACTION_SERVICE);
+        if (embedCompactionService) {
+            LOG.info("Embed compaction service from word count config.");
+            configuration.set(EMBED_COMPACTION_SERVICE, true);
+            // block the word source so that the job itself can take as little resource as possible
+            configuration.set(WORD_RATE, 1);
+            configuration.set(WORD_NUMBER, 1);
+            configuration.set(CHECKPOINT_INTERVAL, Long.MAX_VALUE);
+            env.getConfig().setEmbedCompactionService(true);
+        } else {
+            env.getConfig()
+                    .setCompactionServiceAddress(
+                            configuration.get(JobConfig.COMPACTION_SERVICE_ADDRESS));
+        }
+
+        // configRemoteStateBackend(configuration);
         env.configure(configuration);
-		env.getConfig().setGlobalJobParameters(configuration);
-		env.disableOperatorChaining();
+        env.getConfig().setGlobalJobParameters(configuration);
+        if (!embedCompactionService) {
+            env.disableOperatorChaining();
+        }
 
-		String jobName = configuration.get(JOB_NAME);
+        String jobName = configuration.get(JOB_NAME);
 
-		configureCheckpoint(env, configuration);
+        configureCheckpoint(env, configuration);
 
-		String group1 = "default1";
-		String group2 = "default2";
-		String group3 = "default3";
-		if (configuration.get(SHARING_GROUP)) {
-			group1 = group2 = group3 = "default";
-		}
+        String group1 = "default1";
+        String group2 = "default2";
+        String group3 = "default3";
+        if (configuration.get(SHARING_GROUP)) {
+            group1 = group2 = group3 = "default";
+        }
 
-		setStateBackend(env, configuration);
+        setStateBackend(env, configuration);
 
-		// configure source
-		int wordNumber = configuration.get(WORD_NUMBER);
-		int wordLength = configuration.get(WORD_LENGTH);
-		int wordRate = configuration.get(WORD_RATE);
+        // configure source
+        int wordNumber = configuration.get(WORD_NUMBER);
+        int wordLength = configuration.get(WORD_LENGTH);
+        int wordRate = configuration.get(WORD_RATE);
 
-		DataStream<Tuple2<String, Long>> source =
-				WordSource.getSource(env, wordRate, wordNumber, wordLength).setParallelism(1)
+        DataStream<Tuple2<String, Long>> source =
+                WordSource.getSource(env, wordRate, wordNumber, wordLength)
+                        .setParallelism(1)
                         .slotSharingGroup(group1);
 
-		// configure ttl
-		long ttl = configuration.get(TTL).toMillis();
+        // configure ttl
+        long ttl = configuration.get(TTL).toMillis();
 
-		FlatMapFunction<Tuple2<String, Long>, Long> flatMapFunction =
-			getFlatMapFunction(configuration, ttl);
-		DataStream<Long> mapper = source.keyBy(e->e.f0)
-				.flatMap(flatMapFunction)
-				.setParallelism(configuration.get(FLAT_MAP_PARALLELISM))
-                .slotSharingGroup(group2);
+        FlatMapFunction<Tuple2<String, Long>, Long> flatMapFunction =
+                getFlatMapFunction(configuration, ttl);
+        DataStream<Long> mapper =
+                source.keyBy(e -> e.f0)
+                        .flatMap(flatMapFunction)
+                        .setParallelism(configuration.get(FLAT_MAP_PARALLELISM))
+                        .slotSharingGroup(group2);
 
-		//mapper.print().setParallelism(1);
+        // mapper.print().setParallelism(1);
         mapper.addSink(new BlackholeSink<>()).slotSharingGroup(group3).setParallelism(1);
 
-		if (jobName == null) {
-			env.execute();
-		} else {
-			env.execute(jobName);
-		}
-	}
+        if (jobName == null) {
+            env.execute();
+        } else {
+            env.execute(jobName);
+        }
+    }
 
-	private static FlatMapFunction<Tuple2<String, Long>, Long> getFlatMapFunction(Configuration configuration, long ttl) {
-		JobConfig.StateMode stateMode =
-			JobConfig.StateMode.valueOf(configuration.get(STATE_MODE).toUpperCase());
+    private static FlatMapFunction<Tuple2<String, Long>, Long> getFlatMapFunction(
+            Configuration configuration, long ttl) {
+        JobConfig.StateMode stateMode =
+                JobConfig.StateMode.valueOf(configuration.get(STATE_MODE).toUpperCase());
 
-		switch (stateMode) {
-			case MIXED:
-			default:
-				return new MixedFlatMapper(ttl);
-		}
-	}
+        switch (stateMode) {
+            case MIXED:
+            default:
+                return new MixedFlatMapper(ttl);
+        }
+    }
 
-	/**
-	 * Write and read mixed mapper.
-	 */
-	public static class MixedFlatMapper extends RichFlatMapFunction<Tuple2<String, Long>, Long> {
+    /** Write and read mixed mapper. */
+    public static class MixedFlatMapper extends RichFlatMapFunction<Tuple2<String, Long>, Long> {
 
-		private transient ValueState<Integer> wordCounter;
+        private transient ValueState<Integer> wordCounter;
 
-		private final long ttl;
+        private final long ttl;
 
-		public MixedFlatMapper(long ttl) {
-			this.ttl = ttl;
-		}
+        public MixedFlatMapper(long ttl) {
+            this.ttl = ttl;
+        }
 
-		@Override
-		public void flatMap(Tuple2<String, Long> in, Collector<Long> out) throws IOException {
-            wordCounter.asyncValue().thenAccept(currentValue -> {
-                if (currentValue != null) {
-                    wordCounter.asyncUpdate(currentValue + 1).thenAccept(empty -> {
-                        out.collect(currentValue + 1L);
-                    });
-                } else {
-                    wordCounter.asyncUpdate(1).thenAccept(empty -> {
-                        out.collect(1L);
-                    });
-                }
-            });
-		}
+        @Override
+        public void flatMap(Tuple2<String, Long> in, Collector<Long> out) throws IOException {
+            wordCounter
+                    .asyncValue()
+                    .thenAccept(
+                            currentValue -> {
+                                if (currentValue != null) {
+                                    wordCounter
+                                            .asyncUpdate(currentValue + 1)
+                                            .thenAccept(
+                                                    empty -> {
+                                                        out.collect(currentValue + 1L);
+                                                    });
+                                } else {
+                                    wordCounter
+                                            .asyncUpdate(1)
+                                            .thenAccept(
+                                                    empty -> {
+                                                        out.collect(1L);
+                                                    });
+                                }
+                            });
+        }
 
-		@Override
-		public void open(OpenContext context) {
+        @Override
+        public void open(OpenContext context) {
             ValueStateDescriptor<Integer> descriptor =
                     new ValueStateDescriptor<>(
-                            "wc",
-                            TypeInformation.of(new TypeHint<Integer>(){}));
-			if (ttl > 0) {
-				LOG.info("Setting ttl to {}ms.", ttl);
-				StateTtlConfig ttlConfig = StateTtlConfig
-						.newBuilder(Duration.ofMillis(ttl))
-						.setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
-						.setStateVisibility(StateTtlConfig.StateVisibility.ReturnExpiredIfNotCleanedUp)
-						.build();
-				descriptor.enableTimeToLive(ttlConfig);
-			}
-			wordCounter = ((StreamingRuntimeContext)getRuntimeContext()).getValueState(descriptor);
-		}
-	}
+                            "wc", TypeInformation.of(new TypeHint<Integer>() {}));
+            if (ttl > 0) {
+                LOG.info("Setting ttl to {}ms.", ttl);
+                StateTtlConfig ttlConfig =
+                        StateTtlConfig.newBuilder(Duration.ofMillis(ttl))
+                                .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
+                                .setStateVisibility(
+                                        StateTtlConfig.StateVisibility.ReturnExpiredIfNotCleanedUp)
+                                .build();
+                descriptor.enableTimeToLive(ttlConfig);
+            }
+            wordCounter = ((StreamingRuntimeContext) getRuntimeContext()).getValueState(descriptor);
+        }
+    }
 }

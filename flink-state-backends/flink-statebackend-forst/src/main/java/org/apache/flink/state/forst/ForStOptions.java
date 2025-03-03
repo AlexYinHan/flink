@@ -251,11 +251,4 @@ public class ForStOptions {
                                     + " Only valid when '"
                                     + EXECUTOR_WRITE_IO_INLINE.key()
                                     + "' is false.");
-
-    public static final ConfigOption<Boolean> EMBED_COMPACTION_SERVICE =
-            ConfigOptions.key("state.backend.forst.service.embed-compaction")
-                    .booleanType()
-                    .defaultValue(false)
-                    .withDescription(
-                            "Whether to embed the compaction service in this ForSt state backend.");
 }

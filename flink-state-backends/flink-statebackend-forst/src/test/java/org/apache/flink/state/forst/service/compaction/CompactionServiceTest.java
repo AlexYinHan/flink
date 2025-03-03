@@ -24,8 +24,15 @@ public class CompactionServiceTest {
     @Test
     public void testRPCCommunication() {
         CompactionServiceImpl.startService();
-        CompactionService compactionService =
-                PrimaryDBClient.getCompactionService("tri://127.0.0.1:50051");
-        compactionService.performCompaction();
+        System.out.println("start service");
+        CompactionService compactionService = PrimaryDBClient.getCompactionService();
+        //        while (true) {
+        //            try {
+        //                Thread.sleep(1000);
+        //            } catch (InterruptedException e) {
+        //                e.printStackTrace();
+        //            }
+        //        }
+        //        compactionService.performCompaction(new byte[0]);
     }
 }

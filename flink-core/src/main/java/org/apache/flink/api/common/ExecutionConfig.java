@@ -47,6 +47,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import static org.apache.flink.configuration.ExecutionOptions.COMPACTION_SERVICE_ADDRESS;
+import static org.apache.flink.configuration.ExecutionOptions.EMBED_COMPACTION_SERVICE;
 import static org.apache.flink.configuration.description.TextElement.text;
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -663,6 +665,14 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
                 .ifPresent(t -> this.configuration.set(JobManagerOptions.SCHEDULER, t));
 
         serializerConfig.configure(configuration, classLoader);
+    }
+
+    public void setEmbedCompactionService(boolean embedCompactionService) {
+        this.configuration.set(EMBED_COMPACTION_SERVICE, embedCompactionService);
+    }
+
+    public void setCompactionServiceAddress(String address) {
+        this.configuration.set(COMPACTION_SERVICE_ADDRESS, address);
     }
 
     private void setRestartStrategy(ReadableConfig configuration) {
