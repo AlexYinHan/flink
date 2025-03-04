@@ -35,6 +35,7 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.StateBackendOptions;
 import org.apache.flink.core.execution.RecoveryClaimMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -62,6 +63,7 @@ public class WordCount {
         boolean claim = configuration.get(ENABLE_CLAIM);
         RecoveryClaimMode claimMode = claim ? RecoveryClaimMode.CLAIM : RecoveryClaimMode.NO_CLAIM;
         configuration.set(RESTORE_MODE, claimMode);
+        configuration.set(StateBackendOptions.STATE_BACKEND, "forst");
 
         boolean embedCompactionService = configuration.get(JobConfig.EMBED_COMPACTION_SERVICE);
         if (embedCompactionService) {

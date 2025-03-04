@@ -28,16 +28,19 @@ public class PrimaryDBClient implements ForStRPCEndpoint {
     private static String kCompactionServiceAddress = "tri://127.0.0.1:50051";
     private static CompactionService compactionService;
 
-    public static void setCompactionServiceAddress(String compactionServiceAddress) {
+    public static synchronized void setCompactionServiceAddress(String compactionServiceAddress) {
+        if (compactionService != null) {
+            return;
+        }
         kCompactionServiceAddress = compactionServiceAddress;
         compactionService = getCompactionService();
     }
 
-    public static CompactionService getCompactionService() {
+    public static synchronized CompactionService getCompactionService() {
         return compactionService == null ? initCompactionService() : compactionService;
     }
 
-    public static CompactionService initCompactionService() {
+    public static synchronized CompactionService initCompactionService() {
         LOG.info("Getting compaction service from {}", kCompactionServiceAddress);
         CompactionService compactionService =
                 (CompactionService)
