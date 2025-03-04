@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class CompactionServiceImpl implements CompactionService {
     private static final Logger LOG = LoggerFactory.getLogger(CompactionServiceImpl.class);
@@ -44,28 +45,46 @@ public class CompactionServiceImpl implements CompactionService {
     public Tuple2<byte[], byte[]> performCompaction(byte[] params, byte[] serializedFileMappings) {
         UUID uuid = UUID.randomUUID();
         //        LOG.info("here, {}", uuid);
-
-        LOG.info("perform compaction on compaction-service side, {}", uuid);
-        //        System.out.println("perform compaction on compaction-service side1: " +
-        // params.length);
-        Object fsObject =
-                CompactionServiceJNI.handleCompactionRequest(params, serializedFileMappings);
-        //        System.out.println("perform compaction on compaction-service side2: " +
-        // params.length);
-        ForStFlinkFileSystem forStFlinkFileSystem =
-                CompactionServiceJNI.getForStFlinkFileSystemFromObject(fsObject);
-        //        System.out.println("perform compaction on compaction-service side3: " +
-        // params.length);
-        //        System.out.println(
-        //                "perform compaction on compaction-service side complete: " +
-        // params.length);
-
-        //        LOG.info("return, {}", uuid);
+        AtomicReference<Tuple2<byte[], byte[]>> output = new AtomicReference<>();
+        Thread t =
+                new Thread(
+                        () -> {
+                            try {
+                                LOG.info("perform compaction on compaction-service side, {}", uuid);
+                                Object fsObject =
+                                        CompactionServiceJNI.handleCompactionRequest(
+                                                params, serializedFileMappings);
+                                ForStFlinkFileSystem forStFlinkFileSystem =
+                                        CompactionServiceJNI.getForStFlinkFileSystemFromObject(
+                                                fsObject);
+                                output.set(forStFlinkFileSystem.getCompactionOutput());
+                            } catch (Exception e) {
+                                LOG.info(
+                                        "perform compaction on compaction-service side failed, {}",
+                                        uuid);
+                                throw new RuntimeException(e);
+                            }
+                        });
+        t.setName("YHRemoteCompaction" + uuid);
+        t.start();
         try {
-            return forStFlinkFileSystem.getFileMappingManager().getCompactionOutput();
-        } catch (IOException e) {
+            t.join();
+        } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+        return output.get();
+
+        //        LOG.info("perform compaction on compaction-service side, {}", uuid);
+        //        Object fsObject =
+        //                CompactionServiceJNI.handleCompactionRequest(params,
+        // serializedFileMappings);
+        //        ForStFlinkFileSystem forStFlinkFileSystem =
+        //                CompactionServiceJNI.getForStFlinkFileSystemFromObject(fsObject);
+        //        try {
+        //            return forStFlinkFileSystem.getCompactionOutput();
+        //        } catch (IOException e) {
+        //            throw new RuntimeException(e);
+        //        }
     }
 
     private static DubboBootstrap serviceInstance = null;

@@ -40,14 +40,12 @@ public class CompactionServiceJNI {
     public static void registerFileMappings(Object fsObject, byte[] serializedFileMappings)
             throws IOException, ClassNotFoundException {
         ForStFlinkFileSystem forStFlinkFileSystem = getForStFlinkFileSystemFromObject(fsObject);
-        forStFlinkFileSystem.getFileMappingManager().buildFromBytes(serializedFileMappings);
+        forStFlinkFileSystem.buildFromBytes(serializedFileMappings);
     }
 
     public static void registerOutput(Object fsObject, byte[] compactionOutputBytes) {
         ForStFlinkFileSystem forStFlinkFileSystem = getForStFlinkFileSystemFromObject(fsObject);
-        forStFlinkFileSystem
-                .getFileMappingManager()
-                .registerCompactionOutput(compactionOutputBytes);
+        forStFlinkFileSystem.registerCompactionOutput(compactionOutputBytes);
         //        System.out.println("registerOutput: " + compactionOutputBytes.length);
     }
 }

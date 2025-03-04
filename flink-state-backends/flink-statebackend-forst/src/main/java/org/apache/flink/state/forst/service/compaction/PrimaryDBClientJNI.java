@@ -32,9 +32,9 @@ public class PrimaryDBClientJNI {
     static native void handleCompactionResponse(byte[] output, long ongoingCompactionHandle);
 
     public static void invokeCompactionService(
-            byte[] params, Object fileSystem, long ongoingCompactionHandle) {
+            byte[] params, String inputFiles, Object fileSystem, long ongoingCompactionHandle) {
         try {
-            LOG.info("invokeCompactionService");
+            LOG.info("invokeCompactionService, input files: {}", inputFiles);
             CompactionService compactionService = PrimaryDBClient.getCompactionService();
             ForStFlinkFileSystem forStFlinkFileSystem;
             if (fileSystem instanceof ForStFlinkFileSystem) {
@@ -47,13 +47,13 @@ public class PrimaryDBClientJNI {
             Tuple2<byte[], byte[]> outputAndFileMapping =
                     compactionService.performCompaction(
                             params,
-                            forStFlinkFileSystem
-                                    .getFileMappingManager()
-                                    .getSerializedMappingTable());
+                            forStFlinkFileSystem.getSerializedMappingTableForCompactionParams(
+                                    inputFiles));
             LOG.info("invokeCompactionService complete: " + outputAndFileMapping.f0.length);
 
-            forStFlinkFileSystem.getFileMappingManager().buildFromBytes(outputAndFileMapping.f1);
+            forStFlinkFileSystem.buildFromBytes(outputAndFileMapping.f1);
             handleCompactionResponse(outputAndFileMapping.f0, ongoingCompactionHandle);
+            LOG.info("install outputs complete: " + outputAndFileMapping.f0.length);
         } catch (Exception e) {
             LOG.error("invokeCompactionService error", e);
         }

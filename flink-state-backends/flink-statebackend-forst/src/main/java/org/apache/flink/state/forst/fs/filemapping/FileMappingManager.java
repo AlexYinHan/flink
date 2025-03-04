@@ -38,6 +38,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -155,9 +157,11 @@ public class FileMappingManager {
     }
 
     public List<String> listByPrefix(String path) {
+        //        LOG.info("listByPrefix Prefix: {}", path);
         List<String> linkedPaths = new ArrayList<>();
         for (Map.Entry<String, MappingEntry> entry : mappingTable.entrySet()) {
             if (isParentDir(entry.getKey(), path)) {
+                //                LOG.info("listByPrefix entry: {}", entry.getKey());
                 linkedPaths.add(entry.getKey());
             }
         }
@@ -178,18 +182,21 @@ public class FileMappingManager {
             return true;
         }
 
+        //        LOG.info("rename file: {} -> {}", src, dst);
         MappingEntry srcEntry = mappingTable.get(src);
         if (srcEntry != null) { // rename file
             if (mappingTable.containsKey(dst)) {
+                //                LOG.info("rename1 contains: {}", dst);
                 MappingEntry dstEntry = mappingTable.remove(dst);
                 dstEntry.release();
             }
 
-            LOG.trace("rename: {} -> {}", src, dst);
+            //            LOG.info("rename1: {} -> {}", src, dst);
             mappingTable.remove(src);
             mappingTable.put(dst, srcEntry);
         } else { // rename directory = link to dst dir + delete src dir
 
+            //            LOG.info("rename2: {} -> {}", src, dst);
             // step 1: link all files under src to dst
             List<String> toRename = listByPrefix(src);
             for (String key : toRename) {
@@ -222,7 +229,7 @@ public class FileMappingManager {
     public boolean deleteFileOrDirectory(Path file, boolean recursive) throws IOException {
         String fileStr = file.toString();
         MappingEntry entry = mappingTable.getOrDefault(fileStr, null);
-        LOG.trace("Remove from mapping table: {}, entry:{}", fileStr, entry);
+        //        LOG.info("Remove from mapping table: {}, entry:{}", fileStr, entry);
         // case 1: delete file
         if (entry != null) {
             mappingTable.remove(fileStr);
@@ -322,6 +329,7 @@ public class FileMappingManager {
         return new Path(filePath.getParent(), UUID.randomUUID().toString());
     }
 
+    private Map<String, Tuple2<Boolean, byte[]>> fileMappingFromBytes = Collections.emptyMap();
     private byte[] compactionOutputBytes = null;
 
     // serialize the mapping table to bytes
@@ -336,23 +344,60 @@ public class FileMappingManager {
         }
     }
 
-    public byte[] getSerializedMappingTable() throws IOException {
-        return getSerializedMappingTable(false);
+    public byte[] getSerializedMappingTableForCompactionResult() throws IOException {
+        Map<String, Tuple2<Boolean, byte[]>> tailoredMappingTable = new HashMap<>();
+        //        LOG.info("getSerializedMappingTableForCompactionResult");
+        mappingTable.entrySet().stream()
+                .filter(
+                        e ->
+                                e.getValue().getSourcePath() != null
+                                        && e.getKey().endsWith("sst")
+                                        && !fileMappingFromBytes.containsKey(e.getKey()))
+                .forEach(
+                        e -> {
+                            try {
+                                String key = String.format("%s.compaction", e.getKey());
+                                //                                LOG.info("fm ForCompactionResult:
+                                // " + key + " -> " + e.getValue());
+                                tailoredMappingTable.put(
+                                        key,
+                                        fileNameOrContent(
+                                                e.getKey(), e.getValue().getSourcePath()));
+                            } catch (IOException ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        });
+        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+        ObjectOutputStream out = new ObjectOutputStream(byteOut);
+        out.writeObject(tailoredMappingTable);
+        return byteOut.toByteArray();
     }
 
-    public byte[] getSerializedMappingTable(boolean onlySST) throws IOException {
+    private String fileNameFromPath(String filePath) {
+        return filePath.substring(filePath.lastIndexOf("/") + 1);
+    }
+
+    public byte[] getSerializedMappingTableForCompactionParams(String inputFiles)
+            throws IOException {
+        Set<String> inputFileSet = new HashSet<>(Arrays.asList(inputFiles.split(":")));
         Map<String, Tuple2<Boolean, byte[]>> tailoredMappingTable = new HashMap<>();
+        //        LOG.info("getSerializedMappingTableForCompactionParams");
         mappingTable.entrySet().stream()
                 .filter(
                         e ->
                                 e.getValue().getSourcePath() != null
                                         && !e.getKey().endsWith("LOG")
-                                        && (!onlySST || e.getKey().endsWith("sst")))
+                                        && (!e.getKey().endsWith("sst")
+                                                || inputFileSet.contains(
+                                                        fileNameFromPath(e.getKey()))))
                 .forEach(
                         e -> {
                             try {
+                                String key = e.getKey();
+                                //                                LOG.info("getForBytes: " + key + "
+                                // -> " + e.getValue());
                                 tailoredMappingTable.put(
-                                        e.getKey(),
+                                        key,
                                         fileNameOrContent(
                                                 e.getKey(), e.getValue().getSourcePath()));
                             } catch (IOException ex) {
@@ -368,9 +413,8 @@ public class FileMappingManager {
     public void buildFromBytes(byte[] bytes) throws IOException, ClassNotFoundException {
         ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
         ObjectInputStream in = new ObjectInputStream(byteIn);
-        Map<String, Tuple2<Boolean, byte[]>> restored =
-                (Map<String, Tuple2<Boolean, byte[]>>) in.readObject();
-        for (Map.Entry<String, Tuple2<Boolean, byte[]>> entry : restored.entrySet()) {
+        fileMappingFromBytes = (Map<String, Tuple2<Boolean, byte[]>>) in.readObject();
+        for (Map.Entry<String, Tuple2<Boolean, byte[]>> entry : fileMappingFromBytes.entrySet()) {
             String realFilePath;
             if (entry.getValue().f0) {
                 realFilePath = new String(entry.getValue().f1);
@@ -378,6 +422,7 @@ public class FileMappingManager {
                 // write bytes to a local file
                 realFilePath = writeBytesToLocalFile(entry.getValue().f1);
             }
+            //            LOG.info("mapping from bytes: " + entry.getKey() + " -> " + realFilePath);
             if (mappingTable.containsKey(entry.getKey())) {
                 continue;
             }
@@ -393,6 +438,14 @@ public class FileMappingManager {
                     new MappingEntry(
                             1, new Path(realFilePath), FileOwnership.PRIVATE_OWNED_BY_DB, false));
         }
+
+        mappingTable.forEach(
+                (k, v) -> {
+                    //                    LOG.info("updated file mapping: " + k + " -> " +
+                    // v.getSourcePath());
+                    //                    System.out.println("buildFromBytes: " + k + " -> " +
+                    // v.getSourcePath());
+                });
     }
 
     public void registerCompactionOutput(byte[] compactionOutputBytes) {
@@ -421,6 +474,6 @@ public class FileMappingManager {
             //            System.out.println("remove local file: " + localFile);
             entry.release();
         }
-        return new Tuple2<>(compactionOutputBytes, getSerializedMappingTable(true));
+        return new Tuple2<>(compactionOutputBytes, getSerializedMappingTableForCompactionResult());
     }
 }

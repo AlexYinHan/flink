@@ -18,6 +18,7 @@
 
 package org.apache.flink.state.forst.fs;
 
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.BlockLocation;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.fs.FSDataOutputStream;
@@ -165,14 +166,15 @@ public class ForStFlinkFileSystem extends FileSystem {
      *     file already exists at that path and the write mode indicates to not overwrite the file.
      */
     public ByteBufferWritableFSDataOutputStream create(Path path) throws IOException {
-        // System.out.println("create path: " + path);
+        //        System.out.println("create path: " + path);
         return create(path, WriteMode.OVERWRITE);
     }
 
     @Override
     public synchronized ByteBufferWritableFSDataOutputStream create(
             Path dbFilePath, WriteMode overwriteMode) throws IOException {
-        // System.out.println("create path: " + dbFilePath + ", overwriteMode1: " + overwriteMode);
+        //        System.out.println("create path: " + dbFilePath + ", overwriteMode1: " +
+        // overwriteMode);
         // Create a file in the mapping table
         MappingEntry createdMappingEntry = fileMappingManager.createNewFile(dbFilePath);
         // System.out.println("create path: " + dbFilePath + ", overwriteMode1: " + overwriteMode);
@@ -405,8 +407,26 @@ public class ForStFlinkFileSystem extends FileSystem {
                 : fileBasedCache.open(source.getFilePath(), inputStream);
     }
 
-    public FileMappingManager getFileMappingManager() {
-        return fileMappingManager;
+    public synchronized Tuple2<byte[], byte[]> getCompactionOutput() throws IOException {
+        return fileMappingManager.getCompactionOutput();
+    }
+
+    public synchronized void buildFromBytes(byte[] bytes)
+            throws IOException, ClassNotFoundException {
+        fileMappingManager.buildFromBytes(bytes);
+    }
+
+    public synchronized void registerCompactionOutput(byte[] compactionOutputBytes) {
+        fileMappingManager.registerCompactionOutput(compactionOutputBytes);
+    }
+
+    public synchronized byte[] getSerializedMappingTableForCompactionParams(String inputFiles)
+            throws IOException {
+        return fileMappingManager.getSerializedMappingTableForCompactionParams(inputFiles);
+    }
+
+    public synchronized byte[] getSerializedMappingTableForCompactionResults() throws IOException {
+        return fileMappingManager.getSerializedMappingTableForCompactionResult();
     }
 
     public static class FileStatusWrapper implements FileStatus {
