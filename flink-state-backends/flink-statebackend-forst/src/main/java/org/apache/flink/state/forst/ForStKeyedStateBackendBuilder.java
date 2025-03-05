@@ -207,6 +207,7 @@ public class ForStKeyedStateBackendBuilder<K>
 
     @Override
     public ForStKeyedStateBackend<K> build() throws BackendBuildingException {
+        initCompactionServiceOrClient();
         ColumnFamilyHandle defaultColumnFamilyHandle = null;
         ForStNativeMetricMonitor nativeMetricMonitor = null;
 
@@ -316,7 +317,6 @@ public class ForStKeyedStateBackendBuilder<K>
                 "Finished building ForSt keyed state-backend at local base path: {}, remote base path: {}.",
                 optionsContainer.getLocalBasePath(),
                 optionsContainer.getRemoteBasePath());
-        initCompactionServiceOrClient();
 
         return new ForStKeyedStateBackend<>(
                 backendUID,
