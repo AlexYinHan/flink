@@ -52,6 +52,7 @@ import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
 
+import java.io.IOException;
 import java.lang.management.ClassLoadingMXBean;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
@@ -63,6 +64,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -105,11 +108,75 @@ public class MetricUtils {
         return processMetricGroup;
     }
 
+    /** Updater that update the thread cpu metrics periodically. */
+    private static class ThreadCpuUpdater implements Runnable {
+        private final MXBeanBasedThreadCpu mxBeanBasedThreadCpu;
+
+        private double gc = 0D;
+        private double state = 0D;
+        private double task = 0D;
+        private double others = 0D;
+        private boolean stateful = false;
+
+        public ThreadCpuUpdater() throws IOException {
+            mxBeanBasedThreadCpu = new MXBeanBasedThreadCpu();
+        }
+
+        boolean isEnabled() {
+            return mxBeanBasedThreadCpu.isEnabled();
+        }
+
+        @Override
+        public void run() {
+            try {
+                mxBeanBasedThreadCpu.updateThreadInfo();
+                mxBeanBasedThreadCpu.updateThreadCpuInGroup();
+                gc = mxBeanBasedThreadCpu.getValue(MXBeanBasedThreadCpu.ThreadType.GC);
+                state = mxBeanBasedThreadCpu.getValue(MXBeanBasedThreadCpu.ThreadType.StateAsync);
+                task = mxBeanBasedThreadCpu.getValue(MXBeanBasedThreadCpu.ThreadType.Task);
+                others = mxBeanBasedThreadCpu.getValue(MXBeanBasedThreadCpu.ThreadType.Others);
+                stateful = (state > 0D || mxBeanBasedThreadCpu.isStateful());
+            } catch (Throwable t) {
+                LOG.warn("Updating metric thread cpu failed", t);
+            }
+        }
+    }
+
+    private static void instantiateThreadCpuMetrics(
+            TaskManagerMetricGroup taskManagerMetricGroup, MetricGroup statusGroup)
+            throws IOException {
+
+        final ThreadCpuUpdater updater = new ThreadCpuUpdater();
+        if (!updater.isEnabled()) {
+            LOG.info("MXBean based thread cpu metrics is disabled.");
+            return;
+        }
+
+        final ScheduledExecutorService scheduledExecutorService =
+                taskManagerMetricGroup.getMetricExecutor();
+        final long updateInterval = 1000L;
+        scheduledExecutorService.scheduleAtFixedRate(
+                updater, updateInterval, updateInterval, TimeUnit.MILLISECONDS);
+
+        MetricGroup threadCpuMetricGroup = statusGroup.addGroup(MetricNames.THREAD_CPU);
+        threadCpuMetricGroup.gauge("GC", () -> updater.gc);
+        threadCpuMetricGroup.gauge("Task", () -> updater.task);
+        threadCpuMetricGroup.gauge("State", () -> updater.state);
+        threadCpuMetricGroup.gauge("Other", () -> updater.others);
+
+        threadCpuMetricGroup = threadCpuMetricGroup.addGroup(MetricNames.THREAD_CPU_STATE_RELATED);
+        threadCpuMetricGroup.gauge("GC", () -> updater.stateful ? updater.gc : 0D);
+        threadCpuMetricGroup.gauge("Task", () -> updater.stateful ? updater.task : 0D);
+        threadCpuMetricGroup.gauge("State", () -> updater.stateful ? updater.state : 0D);
+        threadCpuMetricGroup.gauge("Other", () -> updater.stateful ? updater.others : 0D);
+    }
+
     public static Tuple2<TaskManagerMetricGroup, MetricGroup> instantiateTaskManagerMetricGroup(
             MetricRegistry metricRegistry,
             String hostName,
             ResourceID resourceID,
-            Optional<Duration> systemResourceProbeInterval) {
+            Optional<Duration> systemResourceProbeInterval)
+            throws IOException {
         final TaskManagerMetricGroup taskManagerMetricGroup =
                 TaskManagerMetricGroup.createTaskManagerMetricGroup(
                         metricRegistry, hostName, resourceID);
@@ -119,6 +186,9 @@ public class MetricUtils {
         if (systemResourceProbeInterval.isPresent()) {
             instantiateSystemMetrics(taskManagerMetricGroup, systemResourceProbeInterval.get());
         }
+
+        instantiateThreadCpuMetrics(taskManagerMetricGroup, statusGroup);
+
         return Tuple2.of(taskManagerMetricGroup, statusGroup);
     }
 

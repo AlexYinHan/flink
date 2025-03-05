@@ -63,6 +63,8 @@ public class MetricNames {
     public static final String CHECKPOINT_ALIGNMENT_TIME = "checkpointAlignmentTime";
     public static final String CHECKPOINT_START_DELAY_TIME = "checkpointStartDelayNanos";
     public static final String INITIALIZATION_TIME = "initializationTime";
+    public static final String THREAD_CPU = "ThreadCpu";
+    public static final String THREAD_CPU_STATE_RELATED = "StateRelated";
 
     public static final String MAILBOX_START_DURATION = "MailboxStartDurationMs";
     public static final String READ_OUTPUT_DATA_DURATION = "ReadOutputDataDurationMs";

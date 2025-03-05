@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
 
 public class PrimaryDBClient implements ForStRPCEndpoint {
     private static final Logger LOG = LoggerFactory.getLogger(PrimaryDBClient.class);
-    private static String kCompactionServiceAddress = "tri://127.0.0.1:50051";
+    private static String kCompactionServiceAddress = "tri://192.168.0.251:50051";
     private static CompactionService compactionService;
 
     public static synchronized void setCompactionServiceAddress(String compactionServiceAddress) {
