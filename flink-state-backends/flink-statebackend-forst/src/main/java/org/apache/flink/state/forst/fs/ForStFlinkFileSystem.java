@@ -101,6 +101,21 @@ public class ForStFlinkFileSystem extends FileSystem {
                 FileSystem.get(uri), uri.toString(), System.getProperty("java.io.tmpdir"), null);
     }
 
+    public static ForStFlinkFileSystem getForCompactionService(URI uri) throws IOException {
+        LOG.info("Get ForStFlinkFileSystem for compaction service.");
+        System.out.println("Get ForStFlinkFileSystem for compaction service.");
+        return new ForStFlinkFileSystem(
+                FileSystem.get(uri),
+                uri.toString(),
+                System.getProperty("java.io.tmpdir"),
+                getFileBasedCache(
+                        new Path(System.getProperty("java.io.tmpdir")),
+                        new Path(uri.toString()),
+                        20000000000L,
+                        20000000000L,
+                        null));
+    }
+
     public static ForStFlinkFileSystem get(URI uri, Path localBase, FileBasedCache fileBasedCache)
             throws IOException {
         Preconditions.checkNotNull(localBase, "localBase is null, remote uri: %s.", uri);
