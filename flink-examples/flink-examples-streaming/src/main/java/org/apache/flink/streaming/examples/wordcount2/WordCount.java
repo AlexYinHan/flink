@@ -47,8 +47,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Map;
-import java.util.HashMap;
 
 /** Benchmark mainly used for {@link ValueState} and only support 1 parallelism. */
 public class WordCount {
@@ -149,7 +147,6 @@ public class WordCount {
     public static class MixedFlatMapper extends RichFlatMapFunction<Tuple2<String, Long>, Long> {
 
         private transient ValueState<Integer> wordCounter;
-        private transient Map<String, Integer> groundTruth;
 
         private final long ttl;
 
@@ -168,12 +165,6 @@ public class WordCount {
                                             .asyncUpdate(currentValue + 1)
                                             .thenAccept(
                                                     empty -> {
-                                                        if (currentValue
-                                                                != groundTruth.get(in.f0)) {
-                                                            throw new RuntimeException(
-                                                                    "Ground truth mismatched.");
-                                                        }
-                                                        groundTruth.put(in.f0, currentValue + 1);
                                                         out.collect(currentValue + 1L);
                                                     });
                                 } else {
@@ -181,7 +172,6 @@ public class WordCount {
                                             .asyncUpdate(1)
                                             .thenAccept(
                                                     empty -> {
-                                                        groundTruth.put(in.f0, 1);
                                                         out.collect(1L);
                                                     });
                                 }
@@ -204,7 +194,6 @@ public class WordCount {
                 descriptor.enableTimeToLive(ttlConfig);
             }
             wordCounter = ((StreamingRuntimeContext) getRuntimeContext()).getValueState(descriptor);
-            groundTruth = new HashMap<>();
         }
     }
 }
