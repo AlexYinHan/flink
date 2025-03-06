@@ -19,6 +19,7 @@
 package org.apache.flink.state.forst.fs;
 
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.fs.BlockLocation;
 import org.apache.flink.core.fs.FSDataInputStream;
@@ -111,6 +112,7 @@ public class ForStFlinkFileSystem extends FileSystem implements Closeable {
                 uri.toString(),
                 System.getProperty("java.io.tmpdir"),
                 getFileBasedCache(
+                        new Configuration(),
                         new Path(System.getProperty("java.io.tmpdir")),
                         new Path(uri.toString()),
                         20000000000L,
