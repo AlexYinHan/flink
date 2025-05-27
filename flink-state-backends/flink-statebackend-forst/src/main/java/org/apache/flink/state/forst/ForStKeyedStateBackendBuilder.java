@@ -48,6 +48,8 @@ import org.apache.flink.state.forst.restore.ForStIncrementalRestoreOperation;
 import org.apache.flink.state.forst.restore.ForStNoneRestoreOperation;
 import org.apache.flink.state.forst.restore.ForStRestoreOperation;
 import org.apache.flink.state.forst.restore.ForStRestoreResult;
+import org.apache.flink.state.forst.service.compaction.CompactionServiceImpl;
+import org.apache.flink.state.forst.service.compaction.PrimaryDBClient;
 import org.apache.flink.state.forst.snapshot.ForStIncrementalSnapshotStrategy;
 import org.apache.flink.state.forst.snapshot.ForStNativeFullSnapshotStrategy;
 import org.apache.flink.state.forst.snapshot.ForStSnapshotStrategyBase;
@@ -75,6 +77,8 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import static org.apache.flink.configuration.ExecutionOptions.COMPACTION_SERVICE_ADDRESS;
+import static org.apache.flink.configuration.ExecutionOptions.EMBED_COMPACTION_SERVICE;
 import static org.apache.flink.state.forst.ForStConfigurableOptions.WRITE_BATCH_SIZE;
 import static org.apache.flink.state.forst.fs.cache.FileBasedCache.setFlinkThread;
 
@@ -204,6 +208,7 @@ public class ForStKeyedStateBackendBuilder<K>
 
     @Override
     public ForStKeyedStateBackend<K> build() throws BackendBuildingException {
+        initCompactionServiceOrClient();
         ColumnFamilyHandle defaultColumnFamilyHandle = null;
         ForStNativeMetricMonitor nativeMetricMonitor = null;
 
@@ -316,6 +321,7 @@ public class ForStKeyedStateBackendBuilder<K>
                 "Finished building ForSt keyed state-backend at local base path: {}, remote base path: {}.",
                 optionsContainer.getLocalBasePath(),
                 optionsContainer.getRemoteBasePath());
+
         return new ForStKeyedStateBackend<>(
                 backendUID,
                 executionConfig,
@@ -337,6 +343,22 @@ public class ForStKeyedStateBackendBuilder<K>
                 keyContext,
                 ttlTimeProvider,
                 ttlCompactFiltersManager);
+    }
+
+    private void initCompactionServiceOrClient() {
+        boolean embedCompactionService =
+                executionConfig.toConfiguration().get(EMBED_COMPACTION_SERVICE);
+        if (embedCompactionService) {
+            logger.info("Starting ForSt compaction service.");
+            CompactionServiceImpl.startService();
+        } else {
+            String compactionServiceAddress =
+                    executionConfig.toConfiguration().get(COMPACTION_SERVICE_ADDRESS);
+            logger.info(
+                    "Init ForSt compaction request client, service address is {}.",
+                    compactionServiceAddress);
+            PrimaryDBClient.setCompactionServiceAddress(compactionServiceAddress);
+        }
     }
 
     private ForStRestoreOperation getForStRestoreOperation(

@@ -18,6 +18,8 @@
 
 package org.apache.flink.state.forst.fs;
 
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.fs.BlockLocation;
 import org.apache.flink.core.fs.FSDataInputStream;
@@ -100,6 +102,22 @@ public class ForStFlinkFileSystem extends FileSystem implements Closeable {
     public static ForStFlinkFileSystem get(URI uri) throws IOException {
         return new ForStFlinkFileSystem(
                 FileSystem.get(uri), uri.toString(), System.getProperty("java.io.tmpdir"), null);
+    }
+
+    public static ForStFlinkFileSystem getForCompactionService(URI uri) throws IOException {
+        LOG.info("Get ForStFlinkFileSystem for compaction service.");
+        System.out.println("Get ForStFlinkFileSystem for compaction service.");
+        return new ForStFlinkFileSystem(
+                FileSystem.get(uri),
+                uri.toString(),
+                System.getProperty("java.io.tmpdir"),
+                getFileBasedCache(
+                        new Configuration(),
+                        new Path(System.getProperty("java.io.tmpdir")),
+                        new Path(uri.toString()),
+                        20000000000L,
+                        20000000000L,
+                        null));
     }
 
     public static ForStFlinkFileSystem get(URI uri, Path localBase, FileBasedCache fileBasedCache)
@@ -382,6 +400,28 @@ public class ForStFlinkFileSystem extends FileSystem implements Closeable {
         return fileBasedCache == null
                 ? null
                 : fileBasedCache.open(source.getFilePath(), inputStream);
+    }
+
+    public synchronized Tuple2<byte[], byte[]> getCompactionOutput() throws IOException {
+        return fileMappingManager.getCompactionOutput();
+    }
+
+    public synchronized void buildFromBytes(byte[] bytes)
+            throws IOException, ClassNotFoundException {
+        fileMappingManager.buildFromBytes(bytes);
+    }
+
+    public synchronized void registerCompactionOutput(byte[] compactionOutputBytes) {
+        fileMappingManager.registerCompactionOutput(compactionOutputBytes);
+    }
+
+    public synchronized byte[] getSerializedMappingTableForCompactionParams(String inputFiles)
+            throws IOException {
+        return fileMappingManager.getSerializedMappingTableForCompactionParams(inputFiles);
+    }
+
+    public synchronized byte[] getSerializedMappingTableForCompactionResults() throws IOException {
+        return fileMappingManager.getSerializedMappingTableForCompactionResult();
     }
 
     @Override

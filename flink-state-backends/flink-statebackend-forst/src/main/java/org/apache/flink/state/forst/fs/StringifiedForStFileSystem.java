@@ -40,6 +40,12 @@ public class StringifiedForStFileSystem {
         return new StringifiedForStFileSystem(ForStFlinkFileSystem.get(URI.create(uri)));
     }
 
+    public static StringifiedForStFileSystem getForCompactionService(String uri)
+            throws IOException {
+        return new StringifiedForStFileSystem(
+                ForStFlinkFileSystem.getForCompactionService(URI.create(uri)));
+    }
+
     public boolean exists(final String path) throws IOException {
         return fileSystem.exists(new Path(path));
     }
@@ -76,5 +82,9 @@ public class StringifiedForStFileSystem {
 
     public int link(String src, String dst) throws IOException {
         return fileSystem.link(new Path(src), new Path(dst));
+    }
+
+    public ForStFlinkFileSystem getFileSystem() {
+        return fileSystem;
     }
 }

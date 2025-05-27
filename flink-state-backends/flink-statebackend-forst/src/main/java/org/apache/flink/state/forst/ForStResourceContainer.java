@@ -481,7 +481,7 @@ public final class ForStResourceContainer implements AutoCloseable {
 
     /** Create a {@link DBOptions} for ForSt, including some common settings. */
     DBOptions createBaseCommonDBOptions() {
-        return new DBOptions().setUseFsync(false).setStatsDumpPeriodSec(0);
+        return new DBOptions().setUseFsync(false).setStatsDumpPeriodSec(60);
     }
 
     /** Create a {@link ColumnFamilyOptions} for ForSt, including some common settings. */

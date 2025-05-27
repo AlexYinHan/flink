@@ -240,4 +240,18 @@ public class ExecutionOptions {
                             "The timeout of buffer triggering in milliseconds. If the buffer has not reached the"
                                     + " 'execution.async-state.active-buffer-size' within 'buffer-timeout' milliseconds,"
                                     + " a trigger will perform actively.");
+
+    public static final ConfigOption<Boolean> EMBED_COMPACTION_SERVICE =
+            ConfigOptions.key("state.backend.forst.service.embed-compaction")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription(
+                            "Whether to embed the compaction service in this ForSt state backend.");
+
+    public static final ConfigOption<String> COMPACTION_SERVICE_ADDRESS =
+            ConfigOptions.key("state.backend.forst.service.compation-service-address")
+                    .stringType()
+                    .defaultValue("false")
+                    .withDescription(
+                            "RPC address of the compaction service, if embedded is false.");
 }

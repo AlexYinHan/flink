@@ -19,6 +19,9 @@
 package org.apache.flink.state.forst.fs.filemapping;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.core.fs.FSDataInputStream;
+import org.apache.flink.core.fs.FSDataOutputStream;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.state.StreamStateHandle;
@@ -29,11 +32,19 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -165,6 +176,10 @@ public class FileMappingManager {
      * @return always return true except for IOException
      */
     public boolean renameFile(String src, String dst) throws IOException {
+        if (src.equals(dst)) {
+            return true;
+        }
+
         MappingEntry srcEntry = mappingTable.get(src);
         if (srcEntry != null) { // rename file
             if (mappingTable.containsKey(dst)) {
@@ -307,5 +322,130 @@ public class FileMappingManager {
 
     private Path toUUIDPath(Path filePath) {
         return new Path(filePath.getParent(), UUID.randomUUID().toString());
+    }
+
+    private Map<String, Tuple2<Boolean, byte[]>> fileMappingFromBytes = Collections.emptyMap();
+    private byte[] compactionOutputBytes = null;
+
+    // serialize the mapping table to bytes
+    public Tuple2<Boolean, byte[]> fileNameOrContent(String dbFilePath, Path filePath)
+            throws IOException {
+        if (dbFilePath.endsWith("sst")) {
+            return new Tuple2<>(true, filePath.toString().getBytes());
+        } else {
+            try (FSDataInputStream in = filePath.getFileSystem().open(filePath)) {
+                return new Tuple2<>(false, in.readAllBytes());
+            }
+        }
+    }
+
+    public byte[] getSerializedMappingTableForCompactionResult() throws IOException {
+        Map<String, Tuple2<Boolean, byte[]>> tailoredMappingTable = new HashMap<>();
+        mappingTable.entrySet().stream()
+                .filter(
+                        e ->
+                                e.getValue().getSourcePath() != null
+                                        && e.getKey().endsWith("sst")
+                                        && !fileMappingFromBytes.containsKey(e.getKey()))
+                .forEach(
+                        e -> {
+                            try {
+                                String key = String.format("%s.compaction", e.getKey());
+                                tailoredMappingTable.put(
+                                        key,
+                                        fileNameOrContent(
+                                                e.getKey(), e.getValue().getSourcePath()));
+                            } catch (IOException ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        });
+        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+        ObjectOutputStream out = new ObjectOutputStream(byteOut);
+        out.writeObject(tailoredMappingTable);
+        return byteOut.toByteArray();
+    }
+
+    private String fileNameFromPath(String filePath) {
+        return filePath.substring(filePath.lastIndexOf("/") + 1);
+    }
+
+    public byte[] getSerializedMappingTableForCompactionParams(String inputFiles)
+            throws IOException {
+        Set<String> inputFileSet = new HashSet<>(Arrays.asList(inputFiles.split(":")));
+        Map<String, Tuple2<Boolean, byte[]>> tailoredMappingTable = new HashMap<>();
+        mappingTable.entrySet().stream()
+                .filter(
+                        e ->
+                                e.getValue().getSourcePath() != null
+                                        && !e.getKey().endsWith("LOG")
+                                        && (!e.getKey().endsWith("sst")
+                                                || inputFileSet.contains(
+                                                        fileNameFromPath(e.getKey()))))
+                .forEach(
+                        e -> {
+                            try {
+                                String key = e.getKey();
+                                tailoredMappingTable.put(
+                                        key,
+                                        fileNameOrContent(
+                                                e.getKey(), e.getValue().getSourcePath()));
+                            } catch (IOException ex) {
+                                throw new RuntimeException(ex);
+                            }
+                        });
+        ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+        ObjectOutputStream out = new ObjectOutputStream(byteOut);
+        out.writeObject(tailoredMappingTable);
+        return byteOut.toByteArray();
+    }
+
+    public void buildFromBytes(byte[] bytes) throws IOException, ClassNotFoundException {
+        ByteArrayInputStream byteIn = new ByteArrayInputStream(bytes);
+        ObjectInputStream in = new ObjectInputStream(byteIn);
+        fileMappingFromBytes = (Map<String, Tuple2<Boolean, byte[]>>) in.readObject();
+        for (Map.Entry<String, Tuple2<Boolean, byte[]>> entry : fileMappingFromBytes.entrySet()) {
+            String realFilePath;
+            if (entry.getValue().f0) {
+                realFilePath = new String(entry.getValue().f1);
+            } else {
+                // write bytes to a local file
+                realFilePath = writeBytesToLocalFile(entry.getValue().f1);
+            }
+            if (mappingTable.containsKey(entry.getKey())) {
+                continue;
+            }
+            addMappingEntry(
+                    entry.getKey(),
+                    new MappingEntry(
+                            1, new Path(realFilePath), FileOwnership.PRIVATE_OWNED_BY_DB, false));
+        }
+    }
+
+    public void registerCompactionOutput(byte[] compactionOutputBytes) {
+        this.compactionOutputBytes = compactionOutputBytes;
+    }
+
+    private String writeBytesToLocalFile(byte[] bytes) throws IOException {
+        Path localPath = new Path(localBase, UUID.randomUUID().toString());
+        FSDataOutputStream out =
+                localPath.getFileSystem().create(localPath, FileSystem.WriteMode.OVERWRITE);
+        out.write(bytes);
+        out.close();
+        return localPath.toString();
+    }
+
+    public Tuple2<byte[], byte[]> getCompactionOutput() throws IOException {
+        Set<String> localFiles = new HashSet<>();
+        mappingTable.forEach(
+                (k, v) -> {
+                    if (!k.endsWith("sst")) {
+                        localFiles.add(k);
+                    }
+                });
+        for (String localFile : localFiles) {
+            MappingEntry entry = mappingTable.remove(localFile);
+            entry.release();
+        }
+        return new Tuple2<>(compactionOutputBytes, getSerializedMappingTableForCompactionResult());
     }
 }
