@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-config-2.0-svc
+  labels:
+    app: flink
+data:
+  config.yaml: |+
+    jobmanager.rpc.address: flink-svc-2-0
+    taskmanager.numberOfTaskSlots: 2
+    blob.server.port: 6124
+    jobmanager.rpc.port: 6123
+    taskmanager.rpc.port: 6122
+    queryable-state.proxy.ports: 6125
+    jobmanager.memory.process.size: 4g
+    taskmanager.memory.process.size: 4g
+    parallelism.default: 1
+    state.backend: forst
+
+    # checkpoint
+    execution.checkpointing.tolerable-failed-checkpoints: 100000
+    execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+    state.backend.incremental: true
+    execution.checkpointing.interval: 60000
+    execution.checkpointing.mode: EXACTLY_ONCE
+    execution.checkpointing.timeout: 30min
+    execution.checkpointing.dir: oss://xxx
+    state.backend.forst.primary-dir: checkpoint-dir
+
+    # restore
+    state.backend.rocksdb.use-ingest-db-restore-mode: true
+    state.backend.rocksdb.rescaling.use-delete-files-in-range: true
+
+    # state
+    state.backend.forst.use-bloom-filter: true
+    state.backend.forst.memory.partitioned-index-filters: true
+    state.backend.forst.metrics.total-sst-files-size: true
+    state.backend.forst.executor.inline-coordinator: true
+    state.backend.forst.executor.read-io-parallelism: 3
+    state.backend.forst.executor.write-io-parallelism: 1
+    state.backend.forst.cache.size-based-limit: 20000000000
+
+    # table
+    table.exec.async-state.enabled: true
+    table.exec.mini-batch.enabled: false
+    table.exec.mini-batch.allow-latency: 2s
+    table.exec.mini-batch.size: 50000
+    table.optimizer.distinct-agg.split.enabled: true
+    table.optimizer.agg-phase-strategy: ONE_PHASE
+
+    # profiling
+    rest.flamegraph.enabled: true
+    rest.profiling.enabled: true
+
+    # Metrics
+    metrics.reporter.promgateway.factory.class: org.apache.flink.metrics.prometheus.PrometheusPushGatewayReporterFactory
+
+    # OSS
+    fs.oss.endpoint: http://xxx
+    fs.oss.accessKeyId: xxx
+    fs.oss.accessKeySecret: xxx
+
+  log4j-console.properties: |+
+    # This affects logging for both user code and Flink
+    rootLogger.level = INFO
+    rootLogger.appenderRef.console.ref = ConsoleAppender
+    rootLogger.appenderRef.rolling.ref = RollingFileAppender
+
+    # Uncomment this if you want to _only_ change Flink's logging
+    #logger.flink.name = org.apache.flink
+    #logger.flink.level = INFO
+
+    # The following lines keep the log level of common libraries/connectors on
+    # log level INFO. The root logger does not override this. You have to manually
+    # change the log levels here.
+    logger.akka.name = akka
+    logger.akka.level = INFO
+    logger.kafka.name= org.apache.kafka
+    logger.kafka.level = INFO
+    logger.hadoop.name = org.apache.hadoop
+    logger.hadoop.level = INFO
+    logger.zookeeper.name = org.apache.zookeeper
+    logger.zookeeper.level = INFO
+
+    # Log all infos to the console
+    appender.console.name = ConsoleAppender
+    appender.console.type = CONSOLE
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
+
+    # Log all infos in the given rolling file
+    appender.rolling.name = RollingFileAppender
+    appender.rolling.type = RollingFile
+    appender.rolling.append = false
+    appender.rolling.fileName = ${sys:log.file}
+    appender.rolling.filePattern = ${sys:log.file}.%i
+    appender.rolling.layout.type = PatternLayout
+    appender.rolling.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
+    appender.rolling.policies.type = Policies
+    appender.rolling.policies.size.type = SizeBasedTriggeringPolicy
+    appender.rolling.policies.size.size=100MB
+    appender.rolling.strategy.type = DefaultRolloverStrategy
+    appender.rolling.strategy.max = 10
+
+    # Suppress the irrelevant (wrong) warnings from the Netty channel handler
+    logger.netty.name = org.jboss.netty.channel.DefaultChannelPipeline
+    logger.netty.level = OFF
