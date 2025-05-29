@@ -1,217 +1,215 @@
-# Apache Flink
+# Remote Compaction
 
-Apache Flink is an open source stream processing framework with powerful stream- and batch-processing capabilities.
+This is a feature branch for remote compaction.
+It will first introduce the design details of this feature.
+Then it will guide you through a running example, where you can deploy a compaction service and run
+a Flink job which offloads all its LSM-tree compaction works to the service.
 
-Learn more about Flink at [https://flink.apache.org/](https://flink.apache.org/)
+## Introduction
 
+### What It is and How It Works
 
-### Features
+![](remote-compaction.png)
 
-* A streaming-first runtime that supports both batch processing and data streaming programs
+Remote Compaction is a feature which enables the Flink job to offload all the LSM-tree compaction
+works to a separate
+service. This feature works with the disaggregated state management introduced by Flink 2.0.
 
-* Elegant and fluent APIs in Java
+Compaction Service is a standalone service which communicates with the Flink job through RPC.
 
-* A runtime that supports very high throughput and low event latency at the same time
+The process is as follows:
 
-* Support for *event time* and *out-of-order* processing in the DataStream API, based on the *Dataflow Model*
+1. Flink Task Manager sends compaction request to the Compaction Service, including information
+   about
+   the files to be compacted.
+2. The Compaction Service accesses files on the DFS and executes the compaction works.
+3. The Compaction Service sends information about the resulting files back to the Flink Task
+   Manager.
+4. Flink Task Manager accessed the resulting files on the DFS.
 
-* Flexible windowing (time, count, sessions, custom triggers) across different time semantics (event time, processing time)
+The compaction service is deployed within a Flink Task Manager. This allows the implementation to
+reuse much of Flink's framework code, including resource management and DFS access.
 
-* Fault-tolerance with *exactly-once* processing guarantees
+Note that the Compaction Service can be placed in a separate Flink cluster from the Flink job, as
+long as they can communicate with each other.
 
-* Natural back-pressure in streaming programs
+### How to Use
 
-* Libraries for Graph processing (batch), Machine Learning (batch), and Complex Event Processing (streaming)
+To config a Flink job to utilize remote compaction, you need to:
 
-* Custom memory management for efficient and robust switching between in-memory and out-of-core data processing algorithms
+1. Start a Compaction Service. You start the compaction service to a Flink Cluster via Flink client.
+   The process is the same as submitting a Flink job.
+2. Get the IP address of the Task Manager that holds the Compaction service.
+3. Start your Flink job. You need to config the `compactionServiceAddress` configuration to the IP
+   address from Step-2.
 
-* Compatibility layers for Apache Hadoop MapReduce
+For more details of the procedures, an end-to-end script can be found in
+`remote-compaction-example/scripts/run_compaction_example.sh`.
 
-* Integration with YARN, HDFS, HBase, and other components of the Apache Hadoop ecosystem
+### Limitations of the Current Implementation
 
+Currently, the remote compaction service does not have a restart strategy. If the compaction service
+fails, the Flink job requiring a compaction will:
 
-### Streaming Example
-```java
-// pojo class WordWithCount
-public class WordWithCount {
-    public String word;
-    public int count;
+1. Attempt to communicate with the Compaction Service before timing out.
+2. Then fallback to a local compaction mode. That means it will execute the compaction works by
+   itself from now on, instead of offloading to a Compaction Service.
 
-    public WordWithCount() {}
-    
-    public WordWithCount(String word, int count) {
-        this.word = word;
-        this.count = count;
-    }
-}
+Note that this is not a long-term issue, as the Compaction Service runs within a Flink Task Manager
+and can leverage Flink’s high-availability (HA) mechanisms to quickly recover from failures.
 
-// main method
-StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-DataStreamSource<String> text = env.socketTextStream(host, port);
-DataStream<WordWithCount> windowCounts = text
-    .flatMap(
-        (FlatMapFunction<String, String>) (line, collector) 
-            -> Arrays.stream(line.split("\\s")).forEach(collector::collect)
-    ).returns(String.class)
-    .map(word -> new WordWithCount(word, 1)).returns(TypeInformation.of(WordWithCount.class))
-    .keyBy(wordWithCnt -> wordWithCnt.word)
-    .window(TumblingProcessingTimeWindows.of(Duration.ofSeconds(5)))
-    .sum("count").returns(TypeInformation.of(WordWithCount.class));
+Another limitation is that the Compaction Service uses a relatively simple scheduling strategy (
+Round-Robin) to assign tasks to compactor threads.
+Future work will include more sophisticated scheduling policies for dynamically allocating
+compaction workers and assigning tasks.
 
-windowCounts.print();
-env.execute();
-}
+## Running Example
+
+This section will guide you through a running example.
+You can follow the instructions to:
+
+1. Build all the packages from source or download the pre-built images.
+2. Deploy the compaction service and a Flink job cluster on Serverless Kubernetes.
+3. Run a stateful Flink job, which utilizes ForSt StateBackend and offloads all the LSM-tree
+   compaction works to the compaction service.
+
+### Pre-requisites
+
+To run this example, you need access to Serverless Kubernetes, which is available on most Cloud
+Service Provider platforms.
+Your Kubernetes cluster should have Java installed (Java 17 Recommended).
+
+If you choose to build the packages from source, you also need to have the following tools
+installed:
+
+- Git
+- Maven
+- CMake
+- G++
+
+### Prepare the packages
+
+#### [Option-1] Build the packages from source
+
+1. Build ForSt
+
+``` shell
+git clone https://github.com/AlexYinHan/ForSt.git
+cd ForSt
+git checkout remote_compaction_feature
+DEBUG_LEVEL=0  ROCKSDB_DISABLE_JEMALLOC=true DISABLE_WARNING_AS_ERROR=1 PORTABLE=1  CXXFLAGS="-Wno-error=shadow  -Wno-error-defaulted-function-deleted -Wno-unknown-warning-option -Wno-error-unused-private-field"  make -j`nproc` rocksdbjavastatic
+
+# The Result Package:
+#   ForSt-JNI Jar: java/target/forstjni-0.1.6-linux64.jar 
 ```
 
-### Batch Example
-```java
-// pojo class WordWithCount
-public class WordWithCount {
-    public String word;
-    public int count;
+2. Build Flink
 
-    public WordWithCount() {}
-
-    public WordWithCount(String word, int count) {
-        this.word = word;
-        this.count = count;
-    }
-}
-
-// main method
-StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-env.setRuntimeMode(RuntimeExecutionMode.BATCH);
-FileSource<String> source = FileSource.forRecordStreamFormat(new TextLineInputFormat(), new Path("MyInput.txt")).build();
-DataStreamSource<String> text = env.fromSource(source, WatermarkStrategy.noWatermarks(), "MySource");
-DataStream<WordWithCount> windowCounts = text
-        .flatMap((FlatMapFunction<String, String>) (line, collector) -> Arrays
-                .stream(line.split("\\s"))
-                .forEach(collector::collect)).returns(String.class)
-        .map(word -> new WordWithCount(word, 1)).returns(TypeInformation.of(WordWithCount.class))
-        .keyBy(wordWintCount -> wordWintCount.word)
-        .sum("count").returns(TypeInformation.of(WordWithCount.class));
-
-windowCounts.print();
-env.execute();
-```
-
-
-
-## Building Apache Flink from Source
-
-Prerequisites for building Flink:
-
-* Unix-like environment (we use Linux, Mac OS X, Cygwin, WSL)
-* Git
-* Maven (we require version 3.8.6)
-* Java (version 11, 17, or 21)
-
-### Basic Build Instructions
-
-First, clone the repository:
-
-```
-git clone https://github.com/apache/flink.git
+```shell
+git clone https://github.com/AlexYinHan/flink.git
 cd flink
+git checkout remote_compaction_feature
+mvn clean install -DskipTests -Dfast
+
+# The Result Packages:
+#  Flink Dist Directory: flink-dist/target/flink-2.1-SNAPSHOT-bin/flink-2.1-SNAPSHOT
+#  ForSt StateBackend Jar: flink-state-backends/flink-statebackend-forst/target/flink-statebackend-forst-2.1-SNAPSHOT-jar-with-dependencies.jar
+#  Compaction Service Jar: flink-examples/flink-examples-streaming/target/flink-examples-streaming-2.1-SNAPSHOT-CompactionService.jar
 ```
 
-Then, choose one of the following commands based on your preferred Java version:
+3. Prepare the Docker image
 
-**For Java 11**
+We recommend you use the Flink Official Image as your base image:
 
-```
-./mvnw clean package -DskipTests -Djdk11 -Pjava11-target
-```
-
-**For Java 17 (Default)**
-
-```
-./mvnw clean package -DskipTests -Djdk17 -Pjava17-target
+```shell
+docker pull flink:2.0-java11
 ```
 
-**For Java 21**
+- Then, replace the /opt/flink with the Flink Dist Directory you built in the previous step.
+- Next, copy the 'ForSt-JNI Jar' and 'ForSt StateBackend Jar' to the /opt/flink/lib directory.
+- Finally, commit the Docker image.
 
+#### [Option-2] Use the pre-built images
+
+We have followed the same steps to build the Docker image as above.
+
+You can access the Docker image:
+
+```shell
+docker pull alexyinhan/flink-community:fink-remote-compaciton
 ```
-./mvnw clean package -DskipTests -Djdk21 -Pjava21-target
+
+### Start the Flink Cluster
+
+This section guides you to deploy the Flink clusters on Serverless Kubernetes.
+
+In this example, the compaction service is placed in a separate Flink cluster from the Flink job. We
+will refer to these two clusters as "Compaction Service" and "Flink Cluster", respectively.
+
+If you are not familiar with Flink on Serverless Kubernetes, please refer to
+the [documentation](https://nightlies.apache.org/flink/flink-docs-release-2.0/docs/deployment/resource-providers/standalone/kubernetes/).
+
+We recommend you start a Kubernetes proxy first, to gain easy access to the Flink clusters:
+
+```shell
+kubectl proxy
 ```
 
-The build process will take approximately 10 minutes to complete.
-Flink will be installed in `build-target`.
+The Kubernetes yaml files can be found in `remote-compaction-example` in this project.
+Note that you should adjust the yaml files to your own setups. For example:
 
-### Notes
+1. In the ```xxx-session.yaml``` files under ```services```, replace the Docker image with your own
+   image.
+2. Set the checkpoint directory to your DFS service.
 
-* Make sure your JAVA_HOME environment variable points to the correct JDK version
-* The build command uses Maven wrapper (mvnw) which ensures the correct Maven version is used
-* The -DskipTests flag skips running tests to speed up the build process
-* Each Java version requires its corresponding profile (-Pjava<version>-target) and JDK flag (-Djdk<version>)
+```shell
+cd remote-compaction-example
 
-## Developing Flink
+# Configuration and service definition
+kubectl create -f configmaps/config_compactor.yaml
+kubectl create -f configmaps/config_flink.yaml
 
-The Flink committers use IntelliJ IDEA to develop the Flink codebase.
-We recommend IntelliJ IDEA for developing projects that involve Scala code.
+# Create the deployments for Compactor and Flink cluster
+kubectl create -f services/svc-compactor/jobmanager-service.yaml  
+kubectl create -f services/svc-compactor/jobmanager-session.yaml 
+kubectl create -f services/svc-compactor/taskmanager-session.yaml
 
-Minimal requirements for an IDE are:
-* Support for Java and Scala (also mixed projects)
-* Support for Maven with Java and Scala
+kubectl create -f services/svc-flink/jobmanager-service.yaml 
+kubectl create -f services/svc-flink/jobmanager-session.yaml 
+kubectl create -f services/svc-flink/taskmanager-session.yaml       
+```
 
+If everything goes well, you have "Compaction Service" and "Flink Cluster" running.
+You can check the status of the Flink clusters via Web UI though the Kubernetes proxy:
 
-### IntelliJ IDEA
+```shell
+http://localhost:8001/api/v1/namespaces/default/services/flink-svc-compactor:webui/proxy/#/overview
+http://localhost:8001/api/v1/namespaces/default/services/flink-svc-2-0:webui/proxy/#/overview
+```
 
-The IntelliJ IDE supports Maven out of the box and offers a plugin for Scala development.
+### Run a Flink Job with Remote Compaction
 
-* IntelliJ download: [https://www.jetbrains.com/idea/](https://www.jetbrains.com/idea/)
-* IntelliJ Scala Plugin: [https://plugins.jetbrains.com/plugin/?id=1347](https://plugins.jetbrains.com/plugin/?id=1347)
+To run a stateful Flink job, you can prepare your own one.
 
-Check out our [Setting up IntelliJ](https://nightlies.apache.org/flink/flink-docs-master/flinkDev/ide_setup.html#intellij-idea) guide for details.
+Alternatively, we have also provided an example SQL job, which is the same one as in the paper but
+with data
+masking.
+You can find it in `remote-compaction-example/src/ExampleJob/`.
 
-### Eclipse Scala IDE
+An end-to-end script is provided in `remote-compaction-example/scripts/run_compaction_example.sh`.
+It will start the compaction service and run the Flink job. The job is automatically configured to
+use the compaction service.
+All you need to do is specify the local path to your job Jar and Compaction Service Jar in the
+script.
 
-**NOTE:** From our experience, this setup does not work with Flink
-due to deficiencies of the old Eclipse version bundled with Scala IDE 3.0.3 or
-due to version incompatibilities with the bundled Scala version in Scala IDE 4.4.1.
+After the job starts, wait for a while and check the Task Manager logs, which indicates the
+remote compaction is work:
+> ... INFO ... org.apache.flink.state.forst.service.compaction.PrimaryDBClientJNI [] -
+> invokeCompactionService ...
 
-**We recommend to use IntelliJ instead (see above)**
+Or, in the log on the Compaction Service:
+> ... INFO ... org.apache.flink.state.forst.service.compaction.CompactionServiceImpl [] - perform
+> compaction on compaction-service side ...
 
-## Support
-
-Don’t hesitate to ask!
-
-Contact the developers and community on the [mailing lists](https://flink.apache.org/community.html#mailing-lists) if you need any help.
-
-[Open an issue](https://issues.apache.org/jira/browse/FLINK) if you find a bug in Flink.
-
-
-## Documentation
-
-The documentation of Apache Flink is located on the website: [https://flink.apache.org](https://flink.apache.org)
-or in the `docs/` directory of the source code.
-
-
-## Fork and Contribute
-
-This is an active open-source project. We are always open to people who want to use the system or contribute to it.
-Contact us if you are looking for implementation tasks that fit your skills.
-This article describes [how to contribute to Apache Flink](https://flink.apache.org/contributing/how-to-contribute.html).
-
-## Externalized Connectors
-
-Most Flink connectors have been externalized to individual repos under the [Apache Software Foundation](https://github.com/apache):
-
-* [flink-connector-aws](https://github.com/apache/flink-connector-aws)
-* [flink-connector-cassandra](https://github.com/apache/flink-connector-cassandra)
-* [flink-connector-elasticsearch](https://github.com/apache/flink-connector-elasticsearch)
-* [flink-connector-gcp-pubsub](https://github.com/apache/flink-connector-gcp-pubsub)
-* [flink-connector-hbase](https://github.com/apache/flink-connector-hbase)
-* [flink-connector-hive](https://github.com/apache/flink-connector-hive)
-* [flink-connector-jdbc](https://github.com/apache/flink-connector-jdbc)
-* [flink-connector-kafka](https://github.com/apache/flink-connector-kafka)
-* [flink-connector-mongodb](https://github.com/apache/flink-connector-mongodb)
-* [flink-connector-opensearch](https://github.com/apache/flink-connector-opensearch)
-* [flink-connector-prometheus](https://github.com/apache/flink-connector-prometheus)
-* [flink-connector-pulsar](https://github.com/apache/flink-connector-pulsar)
-* [flink-connector-rabbitmq](https://github.com/apache/flink-connector-rabbitmq)
-
-## About
-
-Apache Flink is an open source project of The Apache Software Foundation (ASF).
-The Apache Flink project originated from the [Stratosphere](http://stratosphere.eu) research project.
+You can also check the CPU metrics of your kubernetes cluster, to see the effect of compaction
+service on both the Flink Cluster and the Compaction Service.
