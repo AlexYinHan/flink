@@ -20,6 +20,11 @@ package org.apache.flink.state.forst.fs;
 
 import org.apache.flink.core.fs.ByteBufferReadable;
 import org.apache.flink.core.fs.FSDataInputStream;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.util.Preconditions;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -36,6 +41,9 @@ import java.util.concurrent.LinkedBlockingQueue;
  */
 public class ByteBufferReadableFSDataInputStream extends FSDataInputStream {
 
+    private static final Logger LOG =
+            LoggerFactory.getLogger(ByteBufferReadableFSDataInputStream.class);
+
     private final FSDataInputStream originalInputStream;
 
     /**
@@ -48,11 +56,22 @@ public class ByteBufferReadableFSDataInputStream extends FSDataInputStream {
 
     private final long totalFileSize;
 
+    private final Path dbFilePath;
+
+    private static final int SMALL_FILE_CACHE_LIMIT = 256 * 6;
+    private ByteBuffer smallBuffer = ByteBuffer.allocate(SMALL_FILE_CACHE_LIMIT);
+    private int fillReadPos = -1;
+    private int bufferLength = 0;
+
+    private static final long DIRECT_READ_LIMIT = SMALL_FILE_CACHE_LIMIT - 10;
+
     public ByteBufferReadableFSDataInputStream(
             Callable<FSDataInputStream> inputStreamBuilder,
             int inputStreamCapacity,
-            long totalFileSize)
+            long totalFileSize,
+            Path dbFilePath)
             throws IOException {
+        this.dbFilePath = dbFilePath;
         try {
             this.originalInputStream = inputStreamBuilder.call();
         } catch (Exception e) {
@@ -121,6 +140,7 @@ public class ByteBufferReadableFSDataInputStream extends FSDataInputStream {
         if (bb.remaining() == 0) {
             return 0;
         }
+        int wanted = bb.remaining();
 
         FSDataInputStream fsDataInputStream = readInputStreamPool.poll();
         if (fsDataInputStream == null) {
@@ -128,12 +148,41 @@ public class ByteBufferReadableFSDataInputStream extends FSDataInputStream {
         }
 
         int result;
-        if (fsDataInputStream instanceof ByteBufferReadable) {
-            result = ((ByteBufferReadable) fsDataInputStream).read(position, bb);
+        boolean realReadHappens = false;
+        if (bb.remaining() >= DIRECT_READ_LIMIT) {
+            realReadHappens = true;
+            if (fsDataInputStream instanceof ByteBufferReadable) {
+                result = ((ByteBufferReadable) fsDataInputStream).read(position, bb);
+            } else {
+                fsDataInputStream.seek(position);
+                result = readFullyFromFSDataInputStream(fsDataInputStream, bb);
+            }
         } else {
-            fsDataInputStream.seek(position);
-            result = readFullyFromFSDataInputStream(fsDataInputStream, bb);
+            synchronized (this) {
+                if (!canCoverByBuffer((int) position, wanted)) {
+                    realReadHappens = true;
+                    fillReadBuffer((int) position, fsDataInputStream);
+                }
+
+                if (bufferLength == 0) {
+                    result = 0;
+                } else {
+                    Preconditions.checkState(canCoverByBuffer((int) position, wanted));
+                    int copyPos = (int) (position - fillReadPos);
+                    int toCopy = Math.min(wanted, bufferLength - copyPos);
+
+                    bb.put(smallBuffer.array(), copyPos, toCopy);
+
+                    result = toCopy;
+                }
+            }
         }
+        LOG.trace(
+                "Duration readFully(2) {} ({} {} {})",
+                dbFilePath,
+                position,
+                wanted,
+                realReadHappens);
 
         boolean offered;
         try {
@@ -149,6 +198,40 @@ public class ByteBufferReadableFSDataInputStream extends FSDataInputStream {
         }
 
         return result;
+    }
+
+    private boolean canCoverByBuffer(int pos, int wanted) {
+        return pos >= fillReadPos && pos + wanted <= fillReadPos + bufferLength;
+    }
+
+    private void fillReadBuffer(int pos, FSDataInputStream fsDataInputStream) throws IOException {
+        int readLength;
+        int canRead = (int) (totalFileSize - pos);
+        if (canRead == 0) {
+            return;
+        }
+
+        fillReadPos = pos;
+        if (canRead < SMALL_FILE_CACHE_LIMIT) {
+            if (totalFileSize < SMALL_FILE_CACHE_LIMIT) {
+                fillReadPos = 0;
+                canRead = (int) totalFileSize;
+            } else {
+                fillReadPos = (int) (totalFileSize - SMALL_FILE_CACHE_LIMIT);
+                canRead = SMALL_FILE_CACHE_LIMIT;
+            }
+        }
+
+        smallBuffer = ByteBuffer.allocate(Math.min(canRead, SMALL_FILE_CACHE_LIMIT));
+
+        if (fsDataInputStream instanceof ByteBufferReadable) {
+            readLength = ((ByteBufferReadable) fsDataInputStream).read(fillReadPos, smallBuffer);
+        } else {
+            fsDataInputStream.seek(fillReadPos);
+            readLength = readFullyFromFSDataInputStream(fsDataInputStream, smallBuffer);
+        }
+
+        bufferLength = readLength;
     }
 
     private int readFullyFromFSDataInputStream(FSDataInputStream originalInputStream, ByteBuffer bb)

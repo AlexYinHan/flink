@@ -30,7 +30,16 @@ under the License.
 
 	<properties>
 		<fs.oss.sdk.version>3.13.2</fs.oss.sdk.version>
+		<jindo.version>6.9.0</jindo.version>
 	</properties>
+
+	<repositories>
+		<!-- Add JindoData Maven Repository -->
+		<repository>
+			<id>jindodata</id>
+			<url>https://jindodata-binary.oss-cn-shanghai.aliyuncs.com/mvn-repo/</url>
+		</repository>
+	</repositories>
 
 	<dependencies>
 		<dependency>
@@ -108,6 +117,45 @@ under the License.
 			<version>${jaxb.api.version}</version>
 			<!-- packaged as an optional dependency that is only accessible on Java 11+ -->
 			<scope>provided</scope>
+		</dependency>
+
+		<!-- add jindo-core -->
+		<dependency>
+			<groupId>com.aliyun.jindodata</groupId>
+			<artifactId>jindo-core</artifactId>
+			<version>${jindo.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<!-- add jindo-core-extended-jar for ubuntu22 -->
+		<dependency>
+			<groupId>com.aliyun.jindodata</groupId>
+			<artifactId>jindo-core-linux-ubuntu22-x86_64</artifactId>
+			<version>${jindo.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<!-- add jindo-hadoop-sdk -->
+		<dependency>
+			<groupId>com.aliyun.jindodata</groupId>
+			<artifactId>jindo-sdk</artifactId>
+			<version>${jindo.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
