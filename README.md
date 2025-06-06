@@ -136,8 +136,14 @@ We have followed the same steps to build the Docker image as above.
 You can access the Docker image:
 
 ```shell
-docker pull alexyinhan/flink-community:fink-remote-compaciton
+docker pull alexyinhan/flink-community:flink-remote-compaction-20250606
 ```
+
+Note: To make the image out-of-the-box, we have already pre-installed the following dependencies.
+
+- Hadoop: For connecting to HDFS cluster.
+- Flink Kafka Connector: For connecting to Kafka source.
+- OSS hadoop filesystem: For connecting to Alibaba Cloud OSS (refer to [here](./README_OSS.md) for OSS experiment setup).
 
 ### Start the Flink Cluster
 

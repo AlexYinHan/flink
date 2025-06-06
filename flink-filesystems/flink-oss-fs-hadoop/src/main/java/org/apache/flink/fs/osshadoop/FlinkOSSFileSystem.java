@@ -18,16 +18,23 @@
 
 package org.apache.flink.fs.osshadoop;
 
+import org.apache.flink.core.fs.FileStatus;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.fs.RecoverableWriter;
 import org.apache.flink.core.fs.RefCountedFileWithStream;
 import org.apache.flink.core.fs.RefCountedTmpFileCreator;
 import org.apache.flink.fs.osshadoop.writer.OSSRecoverableWriter;
+import org.apache.flink.runtime.fs.hdfs.HadoopDataOutputStream;
 import org.apache.flink.runtime.fs.hdfs.HadoopFileSystem;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.FunctionWithException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -37,6 +44,7 @@ import java.util.concurrent.Executors;
  * calls to an implementation of Hadoop's filesystem abstraction.
  */
 public class FlinkOSSFileSystem extends HadoopFileSystem {
+    private static final Logger LOG = LoggerFactory.getLogger(FlinkOSSFileSystem.class);
 
     // Minimum size of each of or multipart pieces in bytes
     public static final long MULTIPART_UPLOAD_PART_SIZE_MIN = 10L << 20;
@@ -54,6 +62,9 @@ public class FlinkOSSFileSystem extends HadoopFileSystem {
             cachedFileCreator;
 
     private OSSAccessor ossAccessor;
+
+    private final ConcurrentHashMap<Path, FileStatus> fileStatusCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Path, Boolean> existCache = new ConcurrentHashMap<>();
 
     public FlinkOSSFileSystem(
             org.apache.hadoop.fs.FileSystem fileSystem,
@@ -91,7 +102,63 @@ public class FlinkOSSFileSystem extends HadoopFileSystem {
                 cachedFileCreator);
     }
 
+    @Override
+    public FileStatus getFileStatus(Path f) throws IOException {
+        return fileStatusCache.computeIfAbsent(
+                f,
+                path -> {
+                    try {
+                        LOG.trace("Not cache path {}", path);
+                        return super.getFileStatus(path);
+                    } catch (IOException e) {
+                        return null;
+                    }
+                });
+    }
+
+    @Override
+    public boolean exists(Path f) throws IOException {
+        if (fileStatusCache.get(f) != null) {
+            LOG.trace("exists {} -- cached by file status", f);
+            return true;
+        }
+
+        if (!existCache.getOrDefault(f, false)) {
+            existCache.put(f, super.exists(f));
+        }
+        LOG.trace("exists {} -- cached {}", f, existCache.get(f));
+        return existCache.get(f);
+    }
+
+    @Override
+    public HadoopDataOutputStream create(
+            Path f, boolean overwrite, int bufferSize, short replication, long blockSize)
+            throws IOException {
+        existCache.put(f, true);
+        return super.create(f, overwrite, bufferSize, replication, blockSize);
+    }
+
+    @Override
+    public HadoopDataOutputStream create(Path f, WriteMode overwrite) throws IOException {
+        existCache.put(f, true);
+        return super.create(f, overwrite);
+    }
+
+    @Override
+    public boolean mkdirs(Path f) throws IOException {
+        boolean ret = super.mkdirs(f);
+        existCache.put(f, true);
+        return ret;
+    }
+
     public String getLocalTmpDir() {
         return localTmpDir;
+    }
+
+    @Override
+    public boolean delete(Path f, boolean recursive) throws IOException {
+        existCache.remove(f);
+        fileStatusCache.remove(f);
+        return super.delete(f, recursive);
     }
 }

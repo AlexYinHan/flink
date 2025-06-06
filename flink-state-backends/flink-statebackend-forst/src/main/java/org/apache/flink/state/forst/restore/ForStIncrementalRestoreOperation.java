@@ -61,6 +61,7 @@ import org.forstdb.ColumnFamilyHandle;
 import org.forstdb.ColumnFamilyOptions;
 import org.forstdb.DBOptions;
 import org.forstdb.ExportImportFilesMetaData;
+import org.forstdb.Priority;
 import org.forstdb.ReadOptions;
 import org.forstdb.RocksDB;
 import org.forstdb.RocksDBException;
@@ -795,6 +796,9 @@ public class ForStIncrementalRestoreOperation<K> implements ForStRestoreOperatio
                 operatorIdentifier,
                 exportKeyGroupRange.prettyPrintInterval());
         forstHandle.openDB();
+        logger.info("Temporary disable bg threads in rocksdb for rescale");
+        forstHandle.getDb().getEnv().setBackgroundThreads(0, Priority.LOW);
+        forstHandle.getDb().getEnv().setBackgroundThreads(0, Priority.HIGH);
         for (Map.Entry<RegisteredStateMetaInfoBase.Key, List<ExportImportFilesMetaData>> entry :
                 exportedColumnFamilyMetaData.entrySet()) {
             forstHandle.registerStateColumnFamilyHandleWithImport(
@@ -809,6 +813,10 @@ public class ForStIncrementalRestoreOperation<K> implements ForStRestoreOperatio
                 exportKeyGroupRange,
                 keyGroupPrefixBytes,
                 useDeleteFilesInRange);
+
+        logger.info("Reopen bg threads in rocksdb after rescale");
+        forstHandle.getDb().getEnv().setBackgroundThreads(4, Priority.LOW);
+        forstHandle.getDb().getEnv().setBackgroundThreads(4, Priority.HIGH);
 
         logger.info(
                 "Completed importing exported state handles for backend with range {} in operator {} using Clip/Ingest DB.",
