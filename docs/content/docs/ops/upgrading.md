@@ -278,6 +278,7 @@ For more details, please take a look at the [savepoint documentation]({{< ref "d
 ## Compatibility Table
 
 Savepoints are compatible across Flink versions as indicated by the table below:
+**Note**: "Compatible" here refers specifically to compatibility of the internal data format used in savepoints. It does not cover compatibility of SQL operators or other Upper-level changes.
 
 <table class="table table-bordered" style="font-size:8pt">
   <thead>
